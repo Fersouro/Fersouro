@@ -118,6 +118,35 @@ verificação.
 
 ---
 
+## Destino: DuckDB
+
+Os dados aterrissam num banco DuckDB — arquivo único, sem servidor, que lê
+Parquet nativamente e cujo SQL é o mais próximo do BigQuery entre as opções
+locais. Para 5,6 GB e 22,9 milhões de linhas é folgado.
+
+```bash
+pip install duckdb
+python scripts/carregar_duckdb.py D:/datalake --views D:/views/gold
+```
+
+Cada dataset vira um schema (`lake`, `gold`), e o banco resultante é portátil:
+gere onde for e copie para a máquina que hospedará.
+
+### As views exigem tradução
+
+As 11 views do `gold` são SQL do BigQuery e **não rodam como estão**. O
+carregador faz a parte mecânica — reescreve `projeto.dataset.tabela` para
+`dataset.tabela` — e sinaliza o resto em vez de adivinhar.
+
+Construções que divergem entre os dialetos: `SAFE_DIVIDE`, `SAFE_CAST`,
+`PARSE_DATE`, `FORMAT_DATE`, `GENERATE_ARRAY`, `_TABLE_SUFFIX`. Cada uma
+precisa de decisão sua — um ajuste errado aqui muda resultado de negócio em
+silêncio, que é pior do que falhar.
+
+**Esse é o trabalho residual real da migração**, e não some com automação.
+
+---
+
 ## Fase 4 — Verificação
 
 "Parece tudo ok" não é verificação.
@@ -161,6 +190,8 @@ Nesta ordem:
 - [ ] Fase 3 — bucket copiado
 - [ ] Fase 3 — 850 tabelas exportadas em Parquet/Avro
 - [ ] Fase 4 — contagem, checksums e views conferidos
+- [ ] DuckDB carregado e conferido contra o manifesto
+- [ ] 11 views traduzidas do dialeto BigQuery
 - [ ] Fase 5 — escritas congeladas, revalidado
 - [ ] Fase 6 — faturamento desativado, período de espera cumprido
 - [ ] Projeto excluído
@@ -177,6 +208,7 @@ Nesta ordem:
 | `migrar_bucket.sh` | Copia o bucket e verifica a integridade | Lê do GCP, escreve só local |
 | `exportar_bigquery.sh` | Exporta as 848 tabelas em Parquet | **Escreve** no bucket de staging |
 | `Migrar-Datalake.ps1` | Fases 3 e 4 completas, para Windows | **Escreve** no staging |
+| `carregar_duckdb.py` | Carrega o Parquet no DuckDB e confere contagens | Só local |
 | `list_buckets.py` | Lista buckets via service account | Somente leitura |
 
 Só o `exportar_bigquery.sh` escreve no GCP, e apenas criando arquivos novos
