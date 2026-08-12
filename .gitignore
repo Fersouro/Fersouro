@@ -6,3 +6,8 @@ __pycache__/
 *.json.key
 service-account*.json
 gcp-key*.json
+
+# Saidas dos scripts de inspecao. Carregam DDL de views e SQL de aplicacao —
+# logica de negocio do datalake — e este repositorio e o perfil publico.
+metadados-bq-*/
+dependencias-*/

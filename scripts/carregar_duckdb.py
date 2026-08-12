@@ -39,6 +39,25 @@ import sys
 # Traducao best-effort: o que nao resolver e reportado, nunca silenciado.
 REFERENCIA_BQ = re.compile(r"`([A-Za-z0-9_-]+)\.([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)`")
 
+# Construcoes conhecidas por divergir entre os dois dialetos. Nao tentamos
+# reescrever: sinalizamos, porque um ajuste errado aqui muda resultado de
+# negocio em silencio — pior que falhar.
+#
+# Vale para qualquer SQL escrito para o BigQuery, nao so para as views: o
+# mapear_dependencias.py usa a mesma lista nas consultas dos sistemas que
+# leem o datalake, que precisam da mesma traducao.
+CONSTRUCOES_DIVERGENTES = [
+    ("QUALIFY", "QUALIFY existe no DuckDB, mas confira a semantica"),
+    ("SAFE_CAST", "SAFE_CAST -> TRY_CAST no DuckDB"),
+    ("SAFE_DIVIDE", "SAFE_DIVIDE nao existe no DuckDB"),
+    ("PARSE_DATE", "PARSE_DATE usa formato diferente (strptime)"),
+    ("FORMAT_DATE", "FORMAT_DATE usa formato diferente (strftime)"),
+    ("GENERATE_ARRAY", "GENERATE_ARRAY -> generate_series"),
+    ("STRUCT<", "tipos STRUCT declarados podem precisar de ajuste"),
+    ("_TABLE_SUFFIX", "wildcard de tabela do BigQuery nao existe no DuckDB"),
+    ("ARRAY_AGG", "ARRAY_AGG existe, mas confira IGNORE NULLS"),
+]
+
 
 def carregar_manifesto(raiz: str) -> dict[str, dict[str, int]]:
     """Le os manifesto-*.csv e devolve {dataset: {tabela: row_count}}."""
@@ -60,20 +79,7 @@ def traduzir_view(sql: str) -> tuple[str, list[str]]:
     sql = REFERENCIA_BQ.sub(lambda m: f'"{m.group(2)}"."{m.group(3)}"', sql)
     sql = sql.replace("CREATE VIEW", "CREATE OR REPLACE VIEW")
 
-    # Construcoes conhecidas por divergir entre os dois dialetos. Nao tentamos
-    # reescrever: sinalizamos, porque um ajuste errado aqui muda resultado de
-    # negocio em silencio — pior que falhar.
-    for termo, nota in [
-        ("QUALIFY", "QUALIFY existe no DuckDB, mas confira a semantica"),
-        ("SAFE_CAST", "SAFE_CAST -> TRY_CAST no DuckDB"),
-        ("SAFE_DIVIDE", "SAFE_DIVIDE nao existe no DuckDB"),
-        ("PARSE_DATE", "PARSE_DATE usa formato diferente (strptime)"),
-        ("FORMAT_DATE", "FORMAT_DATE usa formato diferente (strftime)"),
-        ("GENERATE_ARRAY", "GENERATE_ARRAY -> generate_series"),
-        ("STRUCT<", "tipos STRUCT declarados podem precisar de ajuste"),
-        ("_TABLE_SUFFIX", "wildcard de tabela do BigQuery nao existe no DuckDB"),
-        ("ARRAY_AGG", "ARRAY_AGG existe, mas confira IGNORE NULLS"),
-    ]:
+    for termo, nota in CONSTRUCOES_DIVERGENTES:
         if termo in sql.upper():
             avisos.append(nota)
 

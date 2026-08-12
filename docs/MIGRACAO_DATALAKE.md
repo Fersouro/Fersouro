@@ -54,6 +54,40 @@ para o DuckDB — e as consultas dele têm o mesmo problema de dialeto das views
 Migrar os dados sem resolver isso faz a migração "concluir com sucesso" e
 derrubar um sistema em produção.
 
+### Como responder: `mapear_dependencias.py`
+
+O histórico de jobs do BigQuery guarda 180 dias e é evidência, não suposição.
+`mapear_dependencias.py` lê `INFORMATION_SCHEMA.JOBS_BY_PROJECT` e produz um
+relatório com:
+
+- **todos** os principais que tocaram o projeto — não só as duas contas que
+  apareceram por acaso
+- quem só **lê** (reapontar para o DuckDB) versus quem também **escreve**
+  (parar na fase 5) — a distinção importa, porque a ação é oposta
+- as tabelas que cada consumidor lê, ou seja, o que exatamente quebra
+- a distribuição horária das escritas, que define a janela em que exportar
+  não produz cópia desatualizada
+- quantas consultas dos consumidores usam construções que não sobrevivem ao
+  DuckDB, pela mesma lista que governa a tradução das views
+
+```bash
+python scripts/mapear_dependencias.py --projeto tterrasul-datalake
+```
+
+Ele **não** responde onde cada sistema roda: o histórico registra a
+identidade, não a máquina. Para cada principal do relatório, rastreie onde a
+chave da service account foi instalada — isso continua sendo trabalho manual,
+e é pré-requisito da fase 6.
+
+> `JOBS_BY_PROJECT` exige `bigquery.jobs.listAll`, que a permissão de leitura
+> de dados não inclui. Se a `claude-leitor` ainda não tiver, conceda
+> `roles/bigquery.resourceViewer` — continua sendo somente leitura. O script
+> imprime o comando exato quando esbarra nisso.
+
+> **Não versione a saída.** Com `--incluir-sql` o relatório inclui o SQL das
+> aplicações, que é lógica de negócio, pela mesma razão que vale para as views.
+> `.gitignore` já cobre `dependencias-*/`.
+
 ## Regra que governa todo o resto
 
 > A exclusão da conta é irreversível e é o **último** passo.
@@ -125,6 +159,14 @@ qualquer exportação de dados.**
 contêiner e perdeu as credenciais três vezes durante este trabalho — no meio
 de uma exportação de 848 tabelas isso custa caro. A máquina de destino já tem
 o gcloud e é onde os dados precisam chegar de qualquer forma.
+
+**As sessões remotas do Claude Code também não servem para rodar isso.** O
+contêiner delas não recebe `GCP_SA_KEY_B64` — a variável precisa estar
+configurada no *ambiente* da sessão, não no repositório — e não traz `gcloud`,
+`bq` nem `gsutil`. Os scripts em Python funcionam lá se a credencial for
+provisionada no ambiente; os `.sh` e o `.ps1`, não. Escrever e revisar os
+scripts é o que a sessão remota faz bem; executá-los contra o GCP é trabalho
+da sua máquina.
 
 ```powershell
 .\scripts\Migrar-Datalake.ps1 -Projeto tterrasul-datalake `
@@ -225,6 +267,8 @@ Nesta ordem:
 - [x] Fase 2 — tabelas confirmadas **nativas** (850 no total)
 - [x] Fase 2 — volume medido: ~5,6 GB no total
 - [ ] **Views do `gold` salvas como `.sql` e guardadas em local privado**
+- [ ] Dependências vivas mapeadas (`mapear_dependencias.py`)
+- [ ] Localizado onde roda cada principal do relatório
 - [ ] Fase 3 — bucket copiado
 - [ ] Fase 3 — 850 tabelas exportadas em Parquet/Avro
 - [ ] Fase 4 — contagem, checksums e views conferidos
@@ -248,6 +292,8 @@ Nesta ordem:
 | `Migrar-Datalake.ps1` | Fases 3 e 4 completas, para Windows | **Escreve** no staging |
 | `carregar_duckdb.py` | Carrega o Parquet no DuckDB e confere contagens | Só local |
 | `list_buckets.py` | Lista buckets via service account | Somente leitura |
+| `mapear_dependencias.py` | Quem lê, quem escreve e quanto dialeto falta traduzir | Somente leitura |
+| `gcp_credenciais.py` | Carrega a credencial (módulo, não executável) | — |
 
 Só o `exportar_bigquery.sh` escreve no GCP, e apenas criando arquivos novos
 no staging que você indicar — nenhum script altera ou apaga o datalake.
