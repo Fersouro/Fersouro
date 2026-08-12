@@ -1,11 +1,18 @@
 # Migração do datalake GCP → máquina local
 
-## Estado atual: fase 1 de 6
+## Estado: fase 1 concluída
 
-Nada foi migrado ainda. O inventário do que existe no GCP ainda não foi
-levantado — é por isso que este plano detalha a fase 1 e mantém as demais em
-esboço: **as decisões das fases 2 a 6 dependem de números que ainda não
-temos** (volume total, quantidade de objetos, quais serviços estão em uso).
+Projeto do datalake: **`tterrasul-datalake`** (conta `fernando@tterrasul.com.br`).
+
+> O primeiro inventário rodou em `carbon-virtue-504415-a4`, que é o
+> "My First Project" criado por padrão pelo GCP e não contém nada. Ao rodar
+> com `--project=tterrasul-datalake` o conteúdo real apareceu.
+
+| Recurso | Conteúdo |
+| --- | --- |
+| `gs://tterrasul-datalake-lake` | 874.523.665 bytes (~834 MB, Parquet comprimido) |
+| Dataset `lake` (bronze) | 848 tabelas |
+| Dataset `gold` | 11 views |
 
 ## Regra que governa todo o resto
 
@@ -13,117 +20,128 @@ temos** (volume total, quantidade de objetos, quais serviços estão em uso).
 > Nada é apagado antes da cópia estar verificada por checksum.
 
 Projetos GCP excluídos entram num período de recuperação de aproximadamente
-30 dias antes da destruição definitiva. Isso é uma rede de segurança contra
-engano, não uma etapa do plano — não conte com ela.
+30 dias antes da destruição definitiva. É uma rede de segurança contra
+engano, não uma etapa do plano.
 
 ---
 
-## Fase 1 — Inventário  ← você está aqui
+## Fase 2 — Dimensionamento: resolvida
 
-**Objetivo:** saber exatamente o que existe, para depois conseguir provar que
-a cópia veio completa.
+834 MB torna irrelevantes as preocupações habituais de migração:
+
+- **Espaço:** cabe em qualquer máquina, com folga para a verificação
+- **Egress:** menos de 1 GB — custo na casa de centavos
+- **Tempo:** minutos, não dias
+
+Transfer Appliance, migração por lotes e redução de escopo estão descartados.
+
+**A questão em aberto não é volume — é natureza.** As 848 tabelas do `lake`
+são nativas ou externas?
+
+- **Externas** (apontam para o Parquet no GCS): os 834 MB já são o datalake
+  inteiro. Copiar o bucket + recriar as definições resolve tudo.
+- **Nativas** (storage próprio do BigQuery): há dados adicionais que o
+  inventário não mediu, e cada tabela precisa ser exportada.
+
+Um bronze com Parquet no bucket e 848 tabelas sugere fortemente o primeiro
+caso, mas isso precisa ser confirmado, não presumido:
 
 ```bash
-gcloud auth login
-./scripts/gcp_inventory.sh --with-sizes
+./scripts/bq_export_metadata.sh tterrasul-datalake lake gold
 ```
 
-O script é somente-leitura (apenas `list`, `describe`, `du`, `ls`) e gera um
-relatório em markdown. `--with-sizes` percorre todos os objetos de cada
-bucket para medir o volume; é lento, mas o número exato é o que permite
-dimensionar a fase 2.
-
-Rode **na sua máquina**, não aqui. O contêiner do Claude Code não consegue
-instalar o gcloud CLI (`dl.google.com` bloqueado pelo proxy) e a service
-account de leitura de buckets não enxerga BigQuery nem Dataproc.
-
-**Saída desta fase:** o relatório `inventario-gcp-*/inventario.md`. Cole o
-conteúdo aqui e eu detalho as fases seguintes com base nos números reais.
-
-Confira a seção "APIs habilitadas" do relatório: ela revela serviços que o
-script não cobre explicitamente mas que podem guardar dados (Firestore,
-Spanner, Cloud SQL, Pub/Sub com retenção).
+O script classifica as tabelas, mede o storage nativo e — o mais importante —
+salva o DDL de tudo.
 
 ---
 
-## Fase 2 — Dimensionamento
+## O maior risco desta migração: os 11 views
 
-Com os números em mãos, três perguntas decidem a viabilidade:
+**Views não são dados. São definições SQL.**
 
-- **Cabe?** Espaço livre no destino local, com folga para a verificação.
-- **Quanto custa?** Sair com dados do GCP tem custo de egress por GB. Num
-  datalake grande isso não é trivial e precisa ser estimado antes, não
-  descoberto na fatura.
-- **Quanto demora?** Volume ÷ banda real de upload/download. Terabytes numa
-  conexão doméstica são dias, não horas.
+Exportar o dataset `gold` como se fossem tabelas materializa o resultado
+atual e **descarta a lógica que o produz**. Num datalake em camadas, essas 11
+definições são a regra de negócio destilada — quase sempre o ativo mais
+valioso e o mais fácil de perder, porque uma exportação "bem-sucedida"
+devolve dados com aparência correta.
 
-Se o volume inviabilizar a cópia direta, as alternativas são Transfer
-Appliance, ou reduzir o escopo (migrar só o que tem valor retido).
+Os 834 MB de Parquet são reproduzíveis a partir da origem. As 11 views, não.
+
+`bq_export_metadata.sh` salva cada uma como `.sql` versionável. **Faça isso
+antes de qualquer exportação de dados**, e versione o resultado no git.
 
 ---
 
 ## Fase 3 — Cópia
 
-**Cloud Storage:**
+**Bucket** (retomável, mas com 834 MB tende a terminar de primeira):
 
 ```bash
-gcloud storage rsync -r gs://SEU_BUCKET /caminho/local/SEU_BUCKET
+gcloud storage rsync -r gs://tterrasul-datalake-lake ./datalake/lake
 ```
 
-`rsync` é retomável — em transferências longas isso importa mais que
-velocidade. Rode por bucket, não tudo de uma vez, para isolar falhas.
+**BigQuery** depende da fase 2:
 
-**BigQuery:** não dá para copiar direto. É preciso exportar para GCS primeiro
-(`bq extract`) e então baixar. Prefira **Avro ou Parquet a CSV**: CSV perde
-tipos, precisão numérica e estrutura aninhada.
+- *Tabelas externas* → nada a exportar; os dados já vieram no bucket. Basta
+  recriar as definições apontando para o caminho local.
+- *Tabelas nativas* → `bq extract` para GCS em **Parquet ou Avro**, nunca
+  CSV: CSV perde tipos, precisão numérica e estrutura aninhada.
 
 ---
 
 ## Fase 4 — Verificação
 
-**Esta é a fase que não pode ser pulada.** "Parece que veio tudo" não é
-verificação.
-
-O GCS guarda CRC32C (e MD5, exceto em objetos compostos) de cada objeto.
-A verificação tem duas partes:
+"Parece tudo ok" não é verificação.
 
 1. **Contagem** — número de objetos na origem e no destino batem?
-2. **Checksum** — os hashes conferem, objeto a objeto?
+2. **Checksum** — os hashes CRC32C conferem, objeto a objeto?
+3. **Views** — os 11 arquivos `.sql` existem e não estão vazios?
 
-Só depois que ambas passarem a cópia é considerada válida.
+O item 3 é específico deste datalake e não aparece em checklist genérico
+de migração.
 
 ---
 
 ## Fase 5 — Congelamento e revalidação
 
-Se algo ainda escreve nos buckets, a cópia já nasceu desatualizada.
-
-1. Identifique e pare tudo que escreve (jobs, pipelines, aplicações)
+1. Pare tudo que escreve no bucket ou nos datasets
 2. Remova permissões de escrita
-3. Rode a fase 4 de novo — agora sobre um alvo estático
+3. Repita a fase 4 sobre um alvo agora estático
 
 ---
 
 ## Fase 6 — Desativação
 
-Nesta ordem, sem pular etapas:
+Nesta ordem:
 
-1. **Desative o faturamento** primeiro. Isso para o custo imediatamente e é
-   reversível — a diferença crucial em relação ao passo seguinte.
-2. **Espere.** Dias, não minutos. Se algo essencial foi esquecido, é agora
-   que aparece, enquanto ainda dá para voltar atrás.
-3. **Exclua o projeto** apenas depois desse período de silêncio.
-4. **Encerre a conta** por último.
+1. **Desative o faturamento.** Para o custo na hora e é reversível — a
+   diferença crucial em relação ao passo seguinte.
+2. **Espere dias, não minutos.** É nesse silêncio que aparece o que foi
+   esquecido, enquanto ainda dá para voltar atrás.
+3. **Exclua o projeto.**
+4. **Encerre a conta.**
 
 ---
 
 ## Checklist
 
-- [ ] Fase 1 — inventário gerado e revisado
-- [ ] Fase 2 — volume, custo de egress e prazo estimados
-- [ ] Fase 3 — cópia concluída
-- [ ] Fase 4 — contagem e checksums conferem
+- [x] Fase 1 — inventário levantado
+- [ ] Fase 2 — confirmar se as tabelas são nativas ou externas
+- [ ] **Views do `gold` salvas como `.sql` e versionadas**
+- [ ] Fase 3 — bucket copiado
+- [ ] Fase 3 — BigQuery tratado conforme a natureza das tabelas
+- [ ] Fase 4 — contagem, checksums e views conferidos
 - [ ] Fase 5 — escritas congeladas, revalidado
 - [ ] Fase 6 — faturamento desativado, período de espera cumprido
 - [ ] Projeto excluído
 - [ ] Conta encerrada
+
+---
+
+## Scripts
+
+| Script | Função | Natureza |
+| --- | --- | --- |
+| `gcp_inventory.sh` | Inventário geral do projeto | Somente leitura |
+| `bq_export_metadata.sh` | Classifica tabelas, mede storage, salva DDL e views | Somente leitura |
+| `list_buckets.py` | Lista buckets via service account | Somente leitura |
