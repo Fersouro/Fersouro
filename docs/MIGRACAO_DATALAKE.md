@@ -1,6 +1,6 @@
 # Migração do datalake GCP → máquina local
 
-## Estado: fase 1 concluída
+## Estado: fase 2 concluída
 
 Projeto do datalake: **`tterrasul-datalake`** (conta `fernando@tterrasul.com.br`).
 
@@ -11,8 +11,10 @@ Projeto do datalake: **`tterrasul-datalake`** (conta `fernando@tterrasul.com.br`
 | Recurso | Conteúdo |
 | --- | --- |
 | `gs://tterrasul-datalake-lake` | 874.523.665 bytes (~834 MB, Parquet comprimido) |
-| Dataset `lake` (bronze) | 848 tabelas |
-| Dataset `gold` | 11 views |
+| Dataset `lake` (bronze) | 848 tabelas **nativas** |
+| Dataset `gold` | 11 views + 2 tabelas nativas |
+
+Região dos datasets: `southamerica-east1`.
 
 ## Regra que governa todo o resto
 
@@ -25,33 +27,25 @@ engano, não uma etapa do plano.
 
 ---
 
-## Fase 2 — Dimensionamento: resolvida
+## Fase 2 — Dimensionamento
 
-834 MB torna irrelevantes as preocupações habituais de migração:
+O bucket é trivial: 834 MB significa espaço irrelevante, egress de centavos e
+minutos de transferência. Transfer Appliance e migração por lotes estão
+descartados para essa parte.
 
-- **Espaço:** cabe em qualquer máquina, com folga para a verificação
-- **Egress:** menos de 1 GB — custo na casa de centavos
-- **Tempo:** minutos, não dias
+**Mas o bucket não é o datalake.** As 848 tabelas do `lake` e as 2 do `gold`
+são `BASE TABLE` — **nativas**, não externas. Nenhuma URI `gs://` apareceu em
+850 DDLs inspecionados.
 
-Transfer Appliance, migração por lotes e redução de escopo estão descartados.
+Isso significa:
 
-**A questão em aberto não é volume — é natureza.** As 848 tabelas do `lake`
-são nativas ou externas?
+- Os 834 MB de Parquet no bucket são um componente, não o todo
+- Cada uma das 850 tabelas tem storage próprio no BigQuery e precisa ser
+  exportada individualmente
+- O volume total do BigQuery ainda é desconhecido e pode superar em muito o
+  bucket
 
-- **Externas** (apontam para o Parquet no GCS): os 834 MB já são o datalake
-  inteiro. Copiar o bucket + recriar as definições resolve tudo.
-- **Nativas** (storage próprio do BigQuery): há dados adicionais que o
-  inventário não mediu, e cada tabela precisa ser exportada.
-
-Um bronze com Parquet no bucket e 848 tabelas sugere fortemente o primeiro
-caso, mas isso precisa ser confirmado, não presumido:
-
-```bash
-./scripts/bq_export_metadata.sh tterrasul-datalake lake gold
-```
-
-O script classifica as tabelas, mede o storage nativo e — o mais importante —
-salva o DDL de tudo.
+Enquanto esse número não for medido, o dimensionamento continua aberto.
 
 ---
 
@@ -67,8 +61,13 @@ devolve dados com aparência correta.
 
 Os 834 MB de Parquet são reproduzíveis a partir da origem. As 11 views, não.
 
-`bq_export_metadata.sh` salva cada uma como `.sql` versionável. **Faça isso
-antes de qualquer exportação de dados**, e versione o resultado no git.
+`bq_export_metadata.sh` salva cada uma como `.sql`. **Faça isso antes de
+qualquer exportação de dados.**
+
+> **Não versione essas views neste repositório.** `Fersouro/Fersouro` é o
+> repositório público do perfil do GitHub — commitar o DDL ali publicaria a
+> lógica de negócio do datalake. Guarde num repositório privado, ou baixe
+> para uma máquina sua.
 
 ---
 
@@ -80,12 +79,14 @@ antes de qualquer exportação de dados**, e versione o resultado no git.
 gcloud storage rsync -r gs://tterrasul-datalake-lake ./datalake/lake
 ```
 
-**BigQuery** depende da fase 2:
+**BigQuery — 850 tabelas nativas.** Não há atalho: cada tabela precisa de
+`bq extract` para o GCS e depois download. Use **Parquet ou Avro, nunca CSV**
+— CSV perde tipos, precisão numérica e estrutura aninhada.
 
-- *Tabelas externas* → nada a exportar; os dados já vieram no bucket. Basta
-  recriar as definições apontando para o caminho local.
-- *Tabelas nativas* → `bq extract` para GCS em **Parquet ou Avro**, nunca
-  CSV: CSV perde tipos, precisão numérica e estrutura aninhada.
+Atenção: `bq extract` **escreve** no seu bucket (é o único passo da migração
+que não é somente-leitura), e tabelas acima de 1 GB são divididas em vários
+arquivos por exigência do BigQuery. Ambos precisam ser considerados na
+verificação.
 
 ---
 
@@ -126,10 +127,11 @@ Nesta ordem:
 ## Checklist
 
 - [x] Fase 1 — inventário levantado
-- [ ] Fase 2 — confirmar se as tabelas são nativas ou externas
-- [ ] **Views do `gold` salvas como `.sql` e versionadas**
+- [x] Fase 2 — tabelas confirmadas **nativas** (850 no total)
+- [ ] Fase 2 — medir o volume do BigQuery
+- [ ] **Views do `gold` salvas como `.sql` e guardadas em local privado**
 - [ ] Fase 3 — bucket copiado
-- [ ] Fase 3 — BigQuery tratado conforme a natureza das tabelas
+- [ ] Fase 3 — 850 tabelas exportadas em Parquet/Avro
 - [ ] Fase 4 — contagem, checksums e views conferidos
 - [ ] Fase 5 — escritas congeladas, revalidado
 - [ ] Fase 6 — faturamento desativado, período de espera cumprido

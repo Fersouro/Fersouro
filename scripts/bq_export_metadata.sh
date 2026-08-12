@@ -235,4 +235,8 @@ else
   echo "concluído sem erros." >&2
 fi
 echo "relatório: $REPORT" >&2
+echo >&2
+echo "ATENÇÃO: as views em $OUT/*/views/ contêm lógica de negócio." >&2
+echo "NÃO faça commit disso em repositório público. Guarde num repo" >&2
+echo "privado ou baixe para uma máquina sua." >&2
 [ "$FALHAS" -gt 0 ] && exit 1 || exit 0
