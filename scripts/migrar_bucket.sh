@@ -49,7 +49,8 @@ gcloud storage rsync -r "$ORIGEM" "$DESTINO" 2>&1 | tee -a "$LOG"
 # --- Fase 4a: contagem -----------------------------------------------------
 echo
 echo "[2/4] contando objetos..."
-N_REMOTO="$(gcloud storage ls -r "$ORIGEM/**" 2>/dev/null | grep -cv '/$' || echo 0)"
+N_REMOTO="$(gcloud storage ls -r "$ORIGEM/**" 2>/dev/null | grep -cv '/$' || true)"
+N_REMOTO="${N_REMOTO:-0}"
 N_LOCAL="$(find "$DESTINO" -type f | wc -l | tr -d ' ')"
 
 echo "  origem:  $N_REMOTO objetos"

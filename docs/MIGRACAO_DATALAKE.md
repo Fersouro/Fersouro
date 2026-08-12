@@ -42,10 +42,20 @@ Isso significa:
 - Os 834 MB de Parquet no bucket são um componente, não o todo
 - Cada uma das 850 tabelas tem storage próprio no BigQuery e precisa ser
   exportada individualmente
-- O volume total do BigQuery ainda é desconhecido e pode superar em muito o
-  bucket
+- O BigQuery guarda **5.174.505.016 bytes (~4,82 GiB)** em 22.877.524 linhas
 
-Enquanto esse número não for medido, o dimensionamento continua aberto.
+### Volume total
+
+| Origem | Bytes | Proporção |
+| --- | --- | --- |
+| Bucket (Parquet) | 874.523.665 | 14% |
+| BigQuery (848 tabelas) | 5.174.505.016 | 86% |
+| **Total** | **~5,6 GB** | |
+
+Continua tratável: cabe em qualquer disco, egress de poucos dólares,
+transferência em minutos. **O desafio não é volume — é o número de
+operações.** São 848 exportações individuais, e é aí que a fase 3 pode
+falhar parcialmente e passar despercebida.
 
 ---
 
@@ -128,7 +138,7 @@ Nesta ordem:
 
 - [x] Fase 1 — inventário levantado
 - [x] Fase 2 — tabelas confirmadas **nativas** (850 no total)
-- [ ] Fase 2 — medir o volume do BigQuery
+- [x] Fase 2 — volume medido: ~5,6 GB no total
 - [ ] **Views do `gold` salvas como `.sql` e guardadas em local privado**
 - [ ] Fase 3 — bucket copiado
 - [ ] Fase 3 — 850 tabelas exportadas em Parquet/Avro
@@ -147,6 +157,8 @@ Nesta ordem:
 | `gcp_inventory.sh` | Inventário geral do projeto | Somente leitura |
 | `bq_export_metadata.sh` | Classifica tabelas, mede storage, salva DDL e views | Somente leitura |
 | `migrar_bucket.sh` | Copia o bucket e verifica a integridade | Lê do GCP, escreve só local |
+| `exportar_bigquery.sh` | Exporta as 848 tabelas em Parquet | **Escreve** no bucket de staging |
 | `list_buckets.py` | Lista buckets via service account | Somente leitura |
 
-Nenhum deles escreve ou apaga qualquer coisa no GCP.
+Só o `exportar_bigquery.sh` escreve no GCP, e apenas criando arquivos novos
+no staging que você indicar — nenhum script altera ou apaga o datalake.
