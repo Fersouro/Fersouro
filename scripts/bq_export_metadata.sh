@@ -132,13 +132,17 @@ PY
   [ "$TIPOS_OK" -eq 0 ] && continue
 
   # --- Tamanho real do storage nativo -------------------------------------
+  # __TABLES__ é uma metatabela por dataset e devolve size_bytes/row_count
+  # direto. Usamos ela em vez de INFORMATION_SCHEMA.TABLE_STORAGE porque
+  # aquela view é escopada por REGIÃO (region-southamerica-east1.…), não por
+  # dataset — qualificá-la como dataset falha sempre.
   echo "  medindo storage..." >&2
   ST_OK=1
   q "SELECT
-       COALESCE(SUM(total_logical_bytes), 0) AS bytes,
-       COALESCE(SUM(total_rows), 0)          AS linhas,
-       COUNT(*)                              AS tabelas
-     FROM \`$PROJ.$DS.INFORMATION_SCHEMA.TABLE_STORAGE\`" \
+       COALESCE(SUM(size_bytes), 0) AS bytes,
+       COALESCE(SUM(row_count), 0)  AS linhas,
+       COUNT(*)                     AS tabelas
+     FROM \`$PROJ.$DS.__TABLES__\`" \
     "$LOC" "$OUT/$DS/storage.json" "storage/$DS" || ST_OK=0
 
   {
