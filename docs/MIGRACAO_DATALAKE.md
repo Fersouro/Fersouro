@@ -144,4 +144,7 @@ Nesta ordem:
 | --- | --- | --- |
 | `gcp_inventory.sh` | Inventário geral do projeto | Somente leitura |
 | `bq_export_metadata.sh` | Classifica tabelas, mede storage, salva DDL e views | Somente leitura |
+| `migrar_bucket.sh` | Copia o bucket e verifica a integridade | Lê do GCP, escreve só local |
 | `list_buckets.py` | Lista buckets via service account | Somente leitura |
+
+Nenhum deles escreve ou apaga qualquer coisa no GCP.
