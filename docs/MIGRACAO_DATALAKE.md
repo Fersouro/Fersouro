@@ -81,6 +81,24 @@ qualquer exportação de dados.**
 
 ---
 
+## Onde rodar
+
+**Use a máquina Windows, não o Cloud Shell.** O Cloud Shell reciclou o
+contêiner e perdeu as credenciais três vezes durante este trabalho — no meio
+de uma exportação de 848 tabelas isso custa caro. A máquina de destino já tem
+o gcloud e é onde os dados precisam chegar de qualquer forma.
+
+```powershell
+.\scripts\Migrar-Datalake.ps1 -Projeto tterrasul-datalake `
+    -Staging gs://tterrasul-export-tmp `
+    -Bucket gs://tterrasul-datalake-lake `
+    -Destino D:\datalake
+```
+
+Os scripts `.sh` continuam válidos para quem estiver em Linux ou WSL.
+
+---
+
 ## Fase 3 — Cópia
 
 **Bucket** (retomável, mas com 834 MB tende a terminar de primeira):
@@ -158,6 +176,7 @@ Nesta ordem:
 | `bq_export_metadata.sh` | Classifica tabelas, mede storage, salva DDL e views | Somente leitura |
 | `migrar_bucket.sh` | Copia o bucket e verifica a integridade | Lê do GCP, escreve só local |
 | `exportar_bigquery.sh` | Exporta as 848 tabelas em Parquet | **Escreve** no bucket de staging |
+| `Migrar-Datalake.ps1` | Fases 3 e 4 completas, para Windows | **Escreve** no staging |
 | `list_buckets.py` | Lista buckets via service account | Somente leitura |
 
 Só o `exportar_bigquery.sh` escreve no GCP, e apenas criando arquivos novos
