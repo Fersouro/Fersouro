@@ -1,6 +1,6 @@
 # Migração do datalake GCP → máquina local
 
-## Estado: fase 2 concluída
+## Estado: fases 1 e 2 concluídas
 
 Projeto do datalake: **`tterrasul-datalake`** (conta `fernando@tterrasul.com.br`).
 
@@ -15,6 +15,44 @@ Projeto do datalake: **`tterrasul-datalake`** (conta `fernando@tterrasul.com.br`
 | Dataset `gold` | 11 views + 2 tabelas nativas |
 
 Região dos datasets: `southamerica-east1`.
+
+### Já feito
+
+- Inventário completo levantado
+- 848 tabelas confirmadas nativas, volume medido
+- **11 views do `gold` extraídas e baixadas** para a máquina do operador
+  (`Downloads/metadados-bq-20260812-191305/gold/views/`) — este era o único
+  artefato irreproduzível da migração
+- Service account `claude-leitor@tterrasul-datalake.iam.gserviceaccount.com`
+  criada, somente leitura (objetos do Storage, dados do BigQuery, jobs do
+  BigQuery), com a chave registrada como `GCP_SA_KEY_B64` no ambiente
+
+### Falta
+
+1. Exportar as 850 tabelas e baixar (`Migrar-Datalake.ps1`, no Windows)
+2. Carregar no DuckDB (`carregar_duckdb.py`)
+3. **Traduzir as 11 views** do dialeto BigQuery — o trabalho residual real
+4. Mapear as dependências vivas (abaixo) antes de desativar qualquer coisa
+
+---
+
+## Dependências vivas — mapear antes da fase 5
+
+O projeto tem outras service accounts com chave ativa, descobertas por acaso
+ao criar a `claude-leitor`. Cada uma indica um sistema que consome ou alimenta
+o datalake e que **quebra se o projeto for excluído**:
+
+| Conta de serviço | Indício |
+| --- | --- |
+| `datalake-automacao` | Alimenta as 848 tabelas do bronze. Se rodar durante a exportação, a cópia nasce desatualizada. |
+| `portal-relatorios` | "Portal de Relatórios TerraSul" — aplicação provavelmente em produção consumindo o datalake. |
+
+Perguntas em aberto para ambas: onde rodam, quem usa, e se consultam o
+BigQuery diretamente. Se o portal consulta direto, ele precisa ser reapontado
+para o DuckDB — e as consultas dele têm o mesmo problema de dialeto das views.
+
+Migrar os dados sem resolver isso faz a migração "concluir com sucesso" e
+derrubar um sistema em produção.
 
 ## Regra que governa todo o resto
 
