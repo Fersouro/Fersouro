@@ -235,8 +235,19 @@ else
   echo "concluído sem erros." >&2
 fi
 echo "relatório: $REPORT" >&2
+
+# Só avisar sobre as views se elas existirem de fato. Imprimir esse aviso
+# incondicionalmente sugeria que havia arquivos salvos mesmo quando a
+# extração não produziu nenhum — o mesmo erro de tratar ausência como
+# resultado que este script já corrigiu no relatório.
+N_VIEWS="$(find "$OUT" -path '*/views/*.sql' 2>/dev/null | wc -l | tr -d ' ')"
 echo >&2
-echo "ATENÇÃO: as views em $OUT/*/views/ contêm lógica de negócio." >&2
-echo "NÃO faça commit disso em repositório público. Guarde num repo" >&2
-echo "privado ou baixe para uma máquina sua." >&2
+if [ "$N_VIEWS" -gt 0 ]; then
+  echo "$N_VIEWS view(s) salvas em $OUT/*/views/ — contêm lógica de negócio." >&2
+  echo "NÃO faça commit disso em repositório público. Guarde num repo" >&2
+  echo "privado ou baixe para uma máquina sua." >&2
+else
+  echo "NENHUMA view foi salva. Se você esperava views, a extração falhou —" >&2
+  echo "confira $ERRLOG antes de seguir." >&2
+fi
 [ "$FALHAS" -gt 0 ] && exit 1 || exit 0
