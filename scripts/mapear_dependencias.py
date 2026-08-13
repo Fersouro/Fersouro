@@ -54,6 +54,21 @@ REGIAO_VALIDA = re.compile(r"^[a-z0-9-]+$")
 # INFORMATION_SCHEMA guarda 180 dias de historico; pedir mais nao traz nada.
 DIAS_MAX = 180
 
+# O que conta como escrita. Identificado pelo tipo do job, e nao por ter
+# `destination_table` preenchido: o BigQuery deixa esse campo nulo em jobs
+# LOAD, entao filtrar por ele esconde exatamente o pipeline que alimenta o
+# bronze — o mais importante de achar.
+DDL_E_DML = (
+    "'INSERT','UPDATE','DELETE','MERGE','TRUNCATE_TABLE',"
+    "'CREATE_TABLE','CREATE_TABLE_AS_SELECT','CREATE_OR_REPLACE_TABLE',"
+    "'CREATE_VIEW','CREATE_OR_REPLACE_VIEW','CREATE_MATERIALIZED_VIEW',"
+    "'CREATE_SNAPSHOT_TABLE','DROP_TABLE','DROP_VIEW','ALTER_TABLE'"
+)
+CONDICAO_ESCRITA = (
+    "(job_type IN ('LOAD', 'COPY') OR "
+    f"(job_type = 'QUERY' AND statement_type IN ({DDL_E_DML})))"
+)
+
 
 def _tabela_jobs(regiao: str) -> str:
     return f"`region-{regiao}`.INFORMATION_SCHEMA.JOBS_BY_PROJECT"
@@ -111,6 +126,7 @@ def leituras(client, regiao: str, dias: int):
     FROM {_tabela_jobs(regiao)}, UNNEST(referenced_tables) AS ref
     WHERE creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @dias DAY)
       AND ref.dataset_id != 'INFORMATION_SCHEMA'
+      AND ref.dataset_id NOT LIKE 'region-%'
     GROUP BY user_email, dataset_id, table_id
     ORDER BY jobs DESC
     """
@@ -118,25 +134,33 @@ def leituras(client, regiao: str, dias: int):
 
 
 def escritas(client, regiao: str, dias: int):
-    """Quem escreve, em que dataset e com que frequencia.
+    """Quem escreve, com que operacao e com que frequencia.
 
     E a lista do que precisa parar na fase 5: enquanto qualquer uma dessas
     linhas continuar avancando, o alvo nao esta estatico e a verificacao da
     fase 4 nao vale.
+
+    O destino sai de `destination_table`, que o BigQuery **nao preenche para
+    jobs LOAD**. Por isso a escrita e identificada pelo tipo do job, nunca por
+    ter destino registrado: a primeira versao filtrava por
+    `destination_table IS NOT NULL` e informava "nenhuma escrita" num projeto
+    com milhares de LOADs por semana — um falso negativo justamente na
+    pergunta de que depende congelar o alvo.
     """
     sql = f"""
     SELECT
       user_email,
+      job_type,
       statement_type,
       destination_table.dataset_id AS dataset_id,
       COUNT(DISTINCT destination_table.table_id) AS tabelas,
       COUNT(*) AS jobs,
-      MAX(creation_time) AS ultimo
+      MAX(creation_time) AS ultimo,
+      ARRAY_AGG(job_id ORDER BY creation_time DESC LIMIT 1)[OFFSET(0)] AS job_exemplo
     FROM {_tabela_jobs(regiao)}
     WHERE creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @dias DAY)
-      AND destination_table IS NOT NULL
-      AND destination_table.dataset_id NOT LIKE '_%'
-    GROUP BY user_email, statement_type, dataset_id
+      AND {CONDICAO_ESCRITA}
+    GROUP BY user_email, job_type, statement_type, dataset_id
     ORDER BY jobs DESC
     """
     return consultar(client, sql, dias)
@@ -150,8 +174,7 @@ def horario_das_escritas(client, regiao: str, dias: int):
       COUNT(*) AS jobs
     FROM {_tabela_jobs(regiao)}
     WHERE creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL @dias DAY)
-      AND destination_table IS NOT NULL
-      AND destination_table.dataset_id NOT LIKE '_%'
+      AND {CONDICAO_ESCRITA}
     GROUP BY hora
     ORDER BY hora
     """
@@ -296,13 +319,34 @@ def montar_relatorio(dados: dict, projeto: str, dias: int) -> str:
     ln += _tabela_md(
         ["Principal", "Operacao", "Dataset", "Tabelas", "Jobs", "Ultimo"],
         [
-            [r["user_email"], r["statement_type"] or "LOAD", r["dataset_id"],
-             r["tabelas"], f'{r["jobs"]:,}', _dia(r["ultimo"])]
+            [r["user_email"],
+             r["statement_type"] or r["job_type"],
+             r["dataset_id"] or "nao registrado",
+             r["tabelas"] or "—",
+             f'{r["jobs"]:,}',
+             _dia(r["ultimo"])]
             for r in dados["escritas"]
         ],
         "Nenhuma escrita registrada — o bronze pode estar sendo alimentado por "
         "fora do BigQuery, ou a automacao ja parou.",
     )
+
+    # LOAD nao registra destino no historico. Sem isso nao da para saber que
+    # tabelas o pipeline toca, entao o relatorio entrega o job_id: e o fio por
+    # onde puxar o resto no `bq show -j`.
+    sem_destino = [r for r in dados["escritas"] if not r.get("dataset_id")]
+    if sem_destino:
+        ln += [
+            "O BigQuery nao registra o destino de jobs `LOAD`, entao as linhas",
+            "acima sem dataset nao dizem que tabelas foram escritas. Para",
+            "descobrir, inspecione um job de cada principal:",
+            "",
+            "```bash",
+        ]
+        for r in sem_destino[:5]:
+            ln.append(f"bq show --format=prettyjson -j {r.get('job_exemplo')}"
+                      f"  # {r['user_email']}")
+        ln += ["```", ""]
 
     horas = dados["horario_das_escritas"]
     ln += ["## Janela segura para exportar", ""]
