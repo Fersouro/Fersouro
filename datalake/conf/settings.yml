@@ -1,0 +1,26 @@
+# Configuracao global do datalake.
+# Qualquer valor pode usar variaveis de ambiente: ${VAR} ou ${VAR:-default}
+
+lake:
+  # Raiz do lake. Em producao aponte para um volume dedicado
+  # (ex.: /srv/datalake/data ou D:\datalake\data).
+  root: ${DATALAKE_ROOT:-./data}
+  # Banco de controle: watermarks, historico de execucao e resultados de qualidade.
+  control_db: ${DATALAKE_ROOT:-./data}/_control/control.duckdb
+  # Banco de catalogo exposto para consumo (Power BI, DBeaver, DuckDB CLI).
+  catalog_db: ${DATALAKE_ROOT:-./data}/lake.duckdb
+
+runtime:
+  # Linhas por lote lido da fonte e escritas por arquivo Parquet.
+  batch_rows: 200000
+  # arraysize/prefetch do cursor Oracle (impacta muito a velocidade de rede).
+  arraysize: 10000
+  # Compressao dos arquivos Parquet: zstd | snappy | gzip | none
+  compression: zstd
+  # Memoria maxima que o DuckDB pode usar nas transformacoes.
+  duckdb_memory_limit: 4GB
+  duckdb_threads: 4
+
+logging:
+  level: INFO
+  dir: ./logs

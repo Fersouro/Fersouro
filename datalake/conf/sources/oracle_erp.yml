@@ -1,0 +1,59 @@
+# Fonte Oracle. Cada arquivo em conf/sources/ vira uma fonte do lake.
+name: oracle_erp
+type: oracle
+
+connection:
+  dsn: ${ORACLE_ERP_DSN}
+  user: ${ORACLE_ERP_USER}
+  password: ${ORACLE_ERP_PASSWORD}
+  # thin mode (padrao) nao exige Oracle Instant Client instalado.
+  # Use thick_mode: true apenas para tnsnames.ora, wallet ou charset legado.
+  thick_mode: false
+  # lib_dir: ${ORACLE_CLIENT_LIB_DIR}
+
+# Valores herdados por todas as tabelas que nao os declararem.
+defaults:
+  schema: ERP
+  load_mode: incremental
+  batch_rows: 200000
+
+tables:
+  # --- Tabela pequena: recarga total a cada execucao ---
+  - name: CLIENTES
+    load_mode: full
+    primary_key: [ID_CLIENTE]
+    quality:
+      not_null: [id_cliente, nome]
+      unique: [id_cliente]
+      row_count_min: 1
+
+  # --- Tabela grande: incremental por coluna de atualizacao ---
+  - name: PEDIDOS
+    load_mode: incremental
+    primary_key: [ID_PEDIDO]
+    watermark_column: DT_ATUALIZACAO   # coluna que sempre sobe quando a linha muda
+    watermark_type: timestamp          # timestamp | number | date
+    # Recarrega N dias antes do ultimo watermark (protege contra transacao
+    # aberta que gravou com data anterior ao fim da carga anterior).
+    lookback: 1
+    quality:
+      not_null: [id_pedido, id_cliente, dt_pedido]
+      unique: [id_pedido]
+      freshness:
+        column: dt_atualizacao
+        max_age_hours: 26
+
+  # --- Exemplo com projecao, filtro e tipagem explicita ---
+  - name: ITENS_PEDIDO
+    load_mode: incremental
+    primary_key: [ID_PEDIDO, NR_ITEM]
+    watermark_column: DT_ATUALIZACAO
+    watermark_type: timestamp
+    columns: [ID_PEDIDO, NR_ITEM, ID_PRODUTO, QUANTIDADE, VLR_UNITARIO, DT_ATUALIZACAO]
+    filter: "SITUACAO <> 'X'"          # entra no WHERE da extracao
+    column_types:                       # sobrescreve o tipo inferido do Oracle
+      VLR_UNITARIO: decimal(18,4)
+      QUANTIDADE: decimal(18,4)
+    quality:
+      not_null: [id_pedido, nr_item, id_produto]
+      unique: [id_pedido, nr_item]
