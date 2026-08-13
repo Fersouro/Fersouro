@@ -38,20 +38,63 @@ tables:
     quality:
       row_count_min: 1
 
-  # Capa do movimento (nota fiscal). E a maior das tres e cresce todo dia.
+  # Capa do movimento (nota fiscal). E a maior e cresce todo dia.
   #
   # O filtro de 24 meses existe para a primeira carga nao varrer o historico
   # inteiro do ERP. Para trazer mais historico, aumente o numero -- ou remova a
   # linha e rode 'datalake ingest -s ccm -t FAT_MOVIMENTO_CAPA --full'.
   - name: FAT_MOVIMENTO_CAPA
     load_mode: full
-    filter: "DTA_DOCUMENTO >= ADD_MONTHS(TRUNC(SYSDATE), -24)"
+    # Duas datas porque cada relatorio usa a sua: contato usa DTA_DOCUMENTO,
+    # gerencial de pecas usa DTA_ENTRADA_SAIDA.
+    filter: >-
+      (DTA_DOCUMENTO >= ADD_MONTHS(TRUNC(SYSDATE), -24)
+       OR DTA_ENTRADA_SAIDA >= ADD_MONTHS(TRUNC(SYSDATE), -24))
     quality:
       row_count_min: 1
 
   # Ordem de servico da oficina. Sem filtro: o vinculo com a nota e por
   # CONTATO, e filtrar por data aqui poderia perder OS antiga faturada agora.
   - name: OFI_ORDEM_SERVICO
+    load_mode: full
+    quality:
+      row_count_min: 1
+
+  # ------------------------------------------------ gerencial de pecas
+  # As tabelas da consulta de margem: item da nota, cadastro de peca, tipo de
+  # transacao e revenda.
+
+  # Item da nota. A maior de todas -- varias linhas por nota.
+  #
+  # O filtro amarra os itens as notas ja recortadas acima, em vez de repetir a
+  # regra de data: item nao tem data propria, e recortar por conta propria
+  # deixaria item sem capa (ou o contrario) na hora do join.
+  - name: FAT_MOVIMENTO_ITEM
+    load_mode: full
+    filter: >-
+      (EMPRESA, REVENDA, NUMERO_NOTA_FISCAL, SERIE_NOTA_FISCAL, TIPO_TRANSACAO, CONTADOR)
+      IN (SELECT EMPRESA, REVENDA, NUMERO_NOTA_FISCAL, SERIE_NOTA_FISCAL,
+                 TIPO_TRANSACAO, CONTADOR
+            FROM FAT_MOVIMENTO_CAPA
+           WHERE DTA_DOCUMENTO >= ADD_MONTHS(TRUNC(SYSDATE), -24)
+              OR DTA_ENTRADA_SAIDA >= ADD_MONTHS(TRUNC(SYSDATE), -24))
+    quality:
+      row_count_min: 1
+
+  # Cadastro de pecas -- usado para excluir item de industrializacao.
+  - name: PEC_ITEM_ESTOQUE
+    load_mode: full
+    quality:
+      row_count_min: 1
+
+  # Tipo de transacao: separa venda (S/N) de devolucao (E/D).
+  - name: FAT_TIPO_TRANSACAO
+    load_mode: full
+    quality:
+      row_count_min: 1
+
+  # Revendas -- CNPJ e nome fantasia das filiais.
+  - name: GER_REVENDA
     load_mode: full
     quality:
       row_count_min: 1
