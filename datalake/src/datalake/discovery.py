@@ -188,11 +188,25 @@ def inspect_schema(
     owner = owner.upper()
     tables = list_tables(connector, owner, table_filter)
     if not tables:
+        if not table_filter:
+            raise ConnectorError(
+                f"Nenhuma tabela encontrada em '{owner}'. "
+                f"Confira o nome do schema com 'datalake discover --schemas'."
+            )
+        # Filtro sem resultado quase sempre significa que a convencao de nome e
+        # outra. Mostrar nomes reais poupa a proxima rodada de adivinhacao.
         padroes = ", ".join(normalize_filters(table_filter))
+        amostra = select_tables(list_tables(connector, owner), top=15)
+        nomes = "\n  ".join(
+            f"{t.name}  ({'?' if t.num_rows is None else format(t.num_rows, ',')} linhas)"
+            for t in amostra
+        )
         raise ConnectorError(
-            f"Nenhuma tabela encontrada em '{owner}'"
-            + (f" com o(s) filtro(s) {padroes}." if table_filter else ".")
-            + " Confira o nome do schema com 'datalake discover --schemas'."
+            f"Nenhuma tabela em '{owner}' casa com {padroes}.\n\n"
+            f"As 15 maiores tabelas do schema, para voce ver a convencao de nome:\n"
+            f"  {nomes}\n\n"
+            f"Se o prefixo aparecer no meio do nome, busque por conteudo: "
+            f"--filter '%VEI%' em vez de --filter 'VEI%'."
         )
 
     selecionadas = {t.name: t for t in select_tables(tables, top, min_rows)}

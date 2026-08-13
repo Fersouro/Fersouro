@@ -176,3 +176,67 @@ def test_clausula_like_com_um_padrao_so():
     clausula, binds = _like_clause(["%"])
     assert clausula == "(table_name LIKE :p0)"
     assert binds == {"p0": "%"}
+
+
+# --------------------------------------------- filtro sem resultado orienta
+class _CursorFake:
+    """Cursor Oracle minimo: devolve a lista de tabelas em qualquer consulta."""
+
+    def __init__(self, linhas):
+        self._linhas = linhas
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def execute(self, sql, binds=None):
+        # Filtro que nao casa com nada devolve vazio; sem filtro, devolve tudo.
+        casa_tudo = binds and binds.get("p0") == "%"
+        self._resultado = self._linhas if casa_tudo else []
+        return self
+
+    def fetchall(self):
+        return self._resultado
+
+
+class _ConexaoFake:
+    def __init__(self, linhas):
+        self._linhas = linhas
+
+    def cursor(self):
+        return _CursorFake(self._linhas)
+
+
+class _ConectorFake:
+    def __init__(self, linhas):
+        self._con = _ConexaoFake(linhas)
+
+    def open(self):
+        pass
+
+
+def test_filtro_vazio_mostra_nomes_reais_do_schema():
+    from datalake.connectors.base import ConnectorError
+    from datalake.discovery import inspect_schema
+    import pytest as _pytest
+
+    conector = _ConectorFake([("TB_MOVIMENTO", 900000), ("TB_CLIENTE", 1200)])
+    with _pytest.raises(ConnectorError) as erro:
+        inspect_schema(conector, "CNP", table_filter=["VEI%", "FAT%"])
+
+    mensagem = str(erro.value)
+    assert "VEI%, FAT%" in mensagem
+    assert "TB_MOVIMENTO" in mensagem      # mostra a convencao real
+    assert "900,000" in mensagem
+    assert "%VEI%" in mensagem             # ensina a busca por conteudo
+
+
+def test_schema_vazio_sem_filtro_nao_tenta_amostra():
+    from datalake.connectors.base import ConnectorError
+    from datalake.discovery import inspect_schema
+    import pytest as _pytest
+
+    with _pytest.raises(ConnectorError, match="Confira o nome do schema"):
+        inspect_schema(_ConectorFake([]), "INEXISTENTE")
