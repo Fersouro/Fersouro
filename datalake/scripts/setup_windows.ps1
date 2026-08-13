@@ -64,15 +64,43 @@ if (-not (Test-Path (Join-Path $raiz "pyproject.toml"))) {
     $raiz = Split-Path $PSScriptRoot -Parent   # script vive em scripts/
 }
 if (-not (Test-Path (Join-Path $raiz "pyproject.toml"))) {
-    Aviso "Projeto nao encontrado ao lado do script; tentando clonar do GitHub."
-    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-        Parar "git nao instalado. Baixe o projeto pelo site do GitHub e rode este script de dentro da pasta datalake/."
+    Aviso "Projeto nao encontrado ao lado do script; baixando do GitHub."
+    $branch  = "claude/datalake-from-scratch-jkv3wq"
+    $destino = (Get-Location).Path   # .Path: alguns cmdlets nao aceitam o PathInfo
+
+    if (Get-Command git -ErrorAction SilentlyContinue) {
+        git clone -b $branch https://github.com/Fersouro/Fersouro
+    } else {
+        # Sem git, o proprio PowerShell resolve: baixa o zip da branch e
+        # descompacta. Invoke-WebRequest e Expand-Archive sao nativos do 5.1.
+        Aviso "git nao instalado; usando download direto do zip."
+        # Windows antigo negocia TLS 1.0 por padrao e o GitHub recusa.
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        $ProgressPreference = "SilentlyContinue"   # sem isso o download fica lento
+        $zip = Join-Path $destino "datalake-projeto.zip"
+        $url = "https://github.com/Fersouro/Fersouro/archive/refs/heads/$branch.zip"
+        try {
+            Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+        } catch {
+            Parar "Falha ao baixar $url -- $($_.Exception.Message)"
+        }
+        try {
+            Expand-Archive -Path $zip -DestinationPath $destino -Force
+        } catch {
+            Parar "Falha ao descompactar o zip -- $($_.Exception.Message)"
+        }
+        Remove-Item $zip -Force -ErrorAction SilentlyContinue
     }
-    git clone -b claude/datalake-from-scratch-jkv3wq https://github.com/Fersouro/Fersouro
-    $raiz = Join-Path (Get-Location) "Fersouro\datalake"
-    if (-not (Test-Path (Join-Path $raiz "pyproject.toml"))) {
-        Parar "Clone concluido mas a pasta datalake/ nao apareceu onde eu esperava."
+
+    # O nome da pasta extraida muda conforme a branch, entao procura o projeto
+    # em vez de adivinhar o caminho.
+    $encontrado = Get-ChildItem -Path $destino -Filter "pyproject.toml" -Recurse -ErrorAction SilentlyContinue |
+                  Where-Object { $_.DirectoryName -like "*datalake*" } |
+                  Select-Object -First 1
+    if (-not $encontrado) {
+        Parar "Baixou mas nao encontrei a pasta datalake/ com o pyproject.toml dentro de $destino."
     }
+    $raiz = $encontrado.DirectoryName
 }
 Set-Location $raiz
 Ok "projeto em $raiz"
