@@ -109,14 +109,11 @@ def list_schemas(connector: Any) -> list[tuple[str, int]]:
         return [(row[0], int(row[1])) for row in cur.fetchall()]
 
 
-def inspect_schema(
+def list_tables(
     connector: Any, owner: str, table_filter: str | None = None
 ) -> list[TableInfo]:
-    """Le tabelas, colunas e chaves primarias de um schema."""
+    """So os nomes e o volume estimado -- consulta barata, sem colunas nem PK."""
     connector.open()
-    owner = owner.upper()
-    padrao = (table_filter or "%").upper()
-
     with connector._con.cursor() as cur:
         cur.execute(
             """
@@ -125,32 +122,82 @@ def inspect_schema(
              WHERE owner = :owner AND table_name LIKE :padrao
              ORDER BY table_name
             """,
-            {"owner": owner, "padrao": padrao},
+            {"owner": owner.upper(), "padrao": (table_filter or "%").upper()},
         )
-        tables = {
-            name: TableInfo(name=name, num_rows=None if rows is None else int(rows))
+        return [
+            TableInfo(name=name, num_rows=None if rows is None else int(rows))
             for name, rows in cur.fetchall()
-        }
-        if not tables:
-            raise ConnectorError(
-                f"Nenhuma tabela encontrada em '{owner}'"
-                + (f" com o filtro '{table_filter}'." if table_filter else ".")
-                + " Confira o nome do schema com 'datalake discover --schemas'."
-            )
+        ]
 
-        cur.execute(
-            """
-            SELECT table_name, column_name, data_type, data_precision,
-                   data_scale, nullable
-              FROM all_tab_columns
-             WHERE owner = :owner AND table_name LIKE :padrao
-             ORDER BY table_name, column_id
-            """,
-            {"owner": owner, "padrao": padrao},
+
+def select_tables(
+    tables: list[TableInfo], top: int | None = None, min_rows: int | None = None
+) -> list[TableInfo]:
+    """Recorta a lista por volume: as maiores, ou as acima de um piso."""
+    selecionadas = tables
+    if min_rows is not None:
+        selecionadas = [t for t in selecionadas if (t.num_rows or 0) >= min_rows]
+    if top is not None:
+        # num_rows nulo (sem estatistica coletada) vai para o fim da fila.
+        selecionadas = sorted(
+            selecionadas, key=lambda t: (t.num_rows is None, -(t.num_rows or 0), t.name)
+        )[:top]
+    return selecionadas
+
+
+def _chunks(valores: list[str], tamanho: int = 500) -> list[list[str]]:
+    """Oracle limita a lista IN em 1000 itens; 500 da folga com seguranca."""
+    return [valores[i : i + tamanho] for i in range(0, len(valores), tamanho)]
+
+
+def inspect_schema(
+    connector: Any,
+    owner: str,
+    table_filter: str | None = None,
+    top: int | None = None,
+    min_rows: int | None = None,
+) -> list[TableInfo]:
+    """Le tabelas, colunas e chaves primarias de um schema.
+
+    Em schema grande (milhares de tabelas), ler as colunas de tudo custa caro e
+    quase sempre e desperdicio. Por isso o recorte por volume acontece antes de
+    buscar coluna e chave: so o que sobra e detalhado.
+    """
+    owner = owner.upper()
+    tables = list_tables(connector, owner, table_filter)
+    if not tables:
+        raise ConnectorError(
+            f"Nenhuma tabela encontrada em '{owner}'"
+            + (f" com o filtro '{table_filter}'." if table_filter else ".")
+            + " Confira o nome do schema com 'datalake discover --schemas'."
         )
-        for table_name, column, tipo, precision, scale, nullable in cur.fetchall():
-            if table_name in tables:
-                tables[table_name].columns.append(
+
+    selecionadas = {t.name: t for t in select_tables(tables, top, min_rows)}
+    if not selecionadas:
+        raise ConnectorError(
+            f"O filtro de volume excluiu todas as {len(tables)} tabelas de '{owner}'. "
+            f"Baixe o --min-rows ou aumente o --top."
+        )
+
+    nomes = list(selecionadas)
+    with connector._con.cursor() as cur:
+        for lote in _chunks(nomes):
+            binds = {f"t{i}": nome for i, nome in enumerate(lote)}
+            lista = ", ".join(f":{k}" for k in binds)
+            binds["owner"] = owner
+
+            cur.execute(
+                f"""
+                SELECT table_name, column_name, data_type, data_precision,
+                       data_scale, nullable
+                  FROM all_tab_columns
+                 WHERE owner = :owner AND table_name IN ({lista})
+                 ORDER BY table_name, column_id
+                """,
+                binds,
+            )
+            for table_name, column, tipo, precision, scale, nullable in cur.fetchall():
+                selecionadas[table_name].columns.append(
                     ColumnInfo(
                         name=column,
                         data_type=tipo,
@@ -160,24 +207,23 @@ def inspect_schema(
                     )
                 )
 
-        cur.execute(
-            """
-            SELECT c.table_name, cc.column_name
-              FROM all_constraints c
-              JOIN all_cons_columns cc
-                ON cc.owner = c.owner AND cc.constraint_name = c.constraint_name
-             WHERE c.owner = :owner
-               AND c.constraint_type = 'P'
-               AND c.table_name LIKE :padrao
-             ORDER BY c.table_name, cc.position
-            """,
-            {"owner": owner, "padrao": padrao},
-        )
-        for table_name, column in cur.fetchall():
-            if table_name in tables:
-                tables[table_name].primary_key.append(column)
+            cur.execute(
+                f"""
+                SELECT c.table_name, cc.column_name
+                  FROM all_constraints c
+                  JOIN all_cons_columns cc
+                    ON cc.owner = c.owner AND cc.constraint_name = c.constraint_name
+                 WHERE c.owner = :owner
+                   AND c.constraint_type = 'P'
+                   AND c.table_name IN ({lista})
+                 ORDER BY c.table_name, cc.position
+                """,
+                binds,
+            )
+            for table_name, column in cur.fetchall():
+                selecionadas[table_name].primary_key.append(column)
 
-    return list(tables.values())
+    return list(selecionadas.values())
 
 
 def to_yaml(source_name: str, owner: str, tables: list[TableInfo]) -> str:

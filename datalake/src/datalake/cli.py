@@ -150,7 +150,9 @@ def cmd_discover(args, settings: Settings) -> int:
                       f"{source.name} --schema NOME")
             return EXIT_OK
 
-        tables = inspect_schema(connector, args.schema, args.filter)
+        tables = inspect_schema(
+            connector, args.schema, args.filter, top=args.top, min_rows=args.min_rows
+        )
         print(
             _table(
                 ["TABELA", "LINHAS", "COLS", "PK", "WATERMARK", "MODO", "OBS"],
@@ -451,6 +453,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--schema", help="schema (owner) a inspecionar")
     p.add_argument("--schemas", action="store_true", help="so lista os schemas visiveis")
     p.add_argument("--filter", help="filtro LIKE no nome da tabela, ex.: 'PED%%'")
+    p.add_argument("--top", type=int, help="so as N maiores tabelas (por volume estimado)")
+    p.add_argument("--min-rows", type=int, dest="min_rows",
+                   help="ignora tabelas com menos linhas que isso")
     p.add_argument("--write", help="grava o YAML gerado no caminho informado")
     p.add_argument("--force", action="store_true", help="sobrescreve o arquivo existente")
     p.set_defaults(func=cmd_discover)

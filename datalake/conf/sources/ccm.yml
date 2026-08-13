@@ -22,9 +22,10 @@ connection:
   tcp_connect_timeout: 15
 
 defaults:
-  # Confirme o nome exato do owner com 'discover --schemas' antes de carregar:
-  # o schema pode nao se chamar CCM mesmo o sistema se chamando assim.
-  schema: CCM
+  # Confirmado pelo 'discover --schemas' em 13/08/2026: o sistema se chama CCM
+  # mas os dados vivem no schema CNP (2875 tabelas). Os demais schemas visiveis
+  # -- MDSYS, SYS, XDB, CTXSYS, SYSTEM -- sao internos do Oracle.
+  schema: CNP
   load_mode: full
   batch_rows: 200000
 

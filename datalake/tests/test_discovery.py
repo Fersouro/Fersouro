@@ -110,3 +110,42 @@ def test_tabela_sem_pk_sai_comentada_para_preenchimento():
     tabela = dados["tables"][0]
     assert "primary_key" not in tabela
     assert tabela["load_mode"] == "full"
+
+
+# ------------------------------------------------------- recorte por volume
+def test_top_pega_as_maiores_em_ordem():
+    from datalake.discovery import select_tables
+
+    tabelas = [_tabela(nome=n, linhas=r) for n, r in
+               [("A", 10), ("B", 5_000_000), ("C", 300), ("D", 90_000)]]
+    assert [t.name for t in select_tables(tabelas, top=2)] == ["B", "D"]
+
+
+def test_min_rows_descarta_as_pequenas():
+    from datalake.discovery import select_tables
+
+    tabelas = [_tabela(nome=n, linhas=r) for n, r in [("A", 10), ("B", 5000), ("C", 999)]]
+    assert [t.name for t in select_tables(tabelas, min_rows=1000)] == ["B"]
+
+
+def test_tabela_sem_estatistica_vai_para_o_fim():
+    """num_rows nulo significa 'estatistica nunca coletada', nao 'tabela vazia'."""
+    from datalake.discovery import select_tables
+
+    tabelas = [_tabela(nome="SEM_STATS", linhas=None), _tabela(nome="GRANDE", linhas=100)]
+    assert [t.name for t in select_tables(tabelas, top=2)] == ["GRANDE", "SEM_STATS"]
+
+
+def test_sem_recorte_devolve_tudo():
+    from datalake.discovery import select_tables
+
+    tabelas = [_tabela(nome="A", linhas=1), _tabela(nome="B", linhas=2)]
+    assert len(select_tables(tabelas)) == 2
+
+
+def test_lote_respeita_o_limite_da_clausula_in():
+    from datalake.discovery import _chunks
+
+    lotes = _chunks([f"T{i}" for i in range(1201)])
+    assert [len(l) for l in lotes] == [500, 500, 201]
+    assert all(len(l) <= 1000 for l in lotes)  # limite do Oracle
