@@ -37,6 +37,7 @@ param(
     [string]$Peek        = "",   # espia as primeiras linhas de um objeto
     [string]$Sql         = "",   # consulta de leitura direto na origem
     [switch]$Run,                # carrega: bronze -> silver -> gold
+    [switch]$Gold,               # so refaz gold e export, sem recarregar
     # Onde os dados ficam. Fora da pasta do projeto de proposito: o projeto e
     # descartavel (-Update apaga e rebaixa), os dados nao.
     [string]$LakeRoot    = "",
@@ -244,6 +245,19 @@ Ok "conectado"
 
 # -------------------------------------------------------------- 7. discover
 Etapa 7 "Descobrindo o que existe no banco"
+if ($Gold) {
+    # Reprocessa a partir da silver que ja esta em disco: mudar um modelo nao
+    # justifica reler o ERP inteiro.
+    Write-Host "    Refazendo gold e exportacao (sem tocar no Oracle)" -ForegroundColor Cyan
+    & $venvPython -m datalake.cli gold
+    & $venvPython -m datalake.cli export
+    $codigo = $LASTEXITCODE
+    Write-Host ""
+    Write-Host "Arquivos em: $(Join-Path $lakeRootFinal 'export')"
+    Write-Host "Saida completa em: $saida"
+    try { Stop-Transcript | Out-Null } catch { }
+    exit $codigo
+}
 if ($Run) {
     Write-Host "    Carregando: bronze -> silver -> gold" -ForegroundColor Cyan
     & $venvPython -m datalake.cli run -s $SourceName

@@ -27,13 +27,19 @@ SELECT
 
     -- Telefone pronto para uso: prefere o celular, cai para o fixo, e junta o
     -- DDD. Sem isso, todo relatorio refaz essa concatenacao na mao.
+    --
+    -- O CAST e obrigatorio: no ERP esses campos podem vir como numero, e
+    -- concatenar numero com texto nao passa. Convertendo os dois lados, a
+    -- expressao vale para qualquer um dos tipos.
     coalesce(
-        nullif(trim(coalesce(fc.ddd_celular, '') || coalesce(fc.celular, '')), ''),
-        nullif(trim(coalesce(fc.ddd_telefone, '') || coalesce(fc.telefone, '')), '')
+        nullif(trim(coalesce(CAST(fc.ddd_celular AS VARCHAR), '')
+                 || coalesce(CAST(fc.celular AS VARCHAR), '')), ''),
+        nullif(trim(coalesce(CAST(fc.ddd_telefone AS VARCHAR), '')
+                 || coalesce(CAST(fc.telefone AS VARCHAR), '')), '')
     )                                                    AS telefone_contato,
     CASE
-        WHEN nullif(trim(coalesce(fc.celular, '')), '') IS NOT NULL THEN 'celular'
-        WHEN nullif(trim(coalesce(fc.telefone, '')), '') IS NOT NULL THEN 'fixo'
+        WHEN nullif(trim(CAST(fc.celular  AS VARCHAR)), '') IS NOT NULL THEN 'celular'
+        WHEN nullif(trim(CAST(fc.telefone AS VARCHAR)), '') IS NOT NULL THEN 'fixo'
         ELSE 'sem telefone'
     END                                                  AS tipo_telefone
 
