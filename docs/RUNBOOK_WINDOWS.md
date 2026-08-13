@@ -21,13 +21,30 @@ a exportação precisa de credencial de escrita e o destino é o seu disco.
 Se acabou de instalar o Cloud CLI, **abra um PowerShell novo** — o script
 checa `gcloud` no PATH e o PATH só atualiza em processo novo.
 
-> **A `claude-leitor` não serve aqui.** Ela é somente leitura de propósito, e
-> a fase 3 precisa escrever: `bq extract` cria arquivos no staging. Autentique
-> com a sua conta:
+### Duas autenticações, não uma
+
+São mecanismos separados, e confundir os dois custa meia hora de erro
+confuso — `gcloud auth login` **não** autentica os scripts Python.
+
+```powershell
+gcloud auth login                      # o CLI: gcloud, bq, Migrar-Datalake.ps1
+gcloud auth application-default login  # as bibliotecas Python: os scripts .py
+```
+
+Se algum script Python reclamar de quota project:
+
+```powershell
+gcloud auth application-default set-quota-project tterrasul-datalake
+```
+
+> **A `claude-leitor` não serve para a fase 3.** Ela é somente leitura de
+> propósito, e `bq extract` escreve no staging. Use a sua conta.
 >
-> ```powershell
-> gcloud auth login
-> ```
+> E para os scripts de leitura (`mapear_dependencias.py`, `conferir_views.py`)
+> a sua conta é mais simples que a service account: como você é dono do
+> projeto, já tem o `bigquery.jobs.listAll` que o histórico de jobs exige, sem
+> precisar conceder papel nenhum. A `GCP_SA_KEY_B64` só é necessária onde não
+> dá para fazer login interativo — numa sessão remota, por exemplo.
 
 ---
 
@@ -201,6 +218,8 @@ gcloud storage rm -r gs://tterrasul-export-tmp
 | `bq extract` falha em todas as tabelas | staging em região diferente de `southamerica-east1` (passo 0) |
 | `'gcloud' nao encontrado` | PowerShell aberto antes de instalar o CLI — abra outro |
 | `Nenhuma conta autenticada` | falta `gcloud auth login` |
+| Script Python diz "Nenhuma credencial encontrada", mas o `bq` funciona | falta `gcloud auth application-default login` — são autenticações separadas |
+| `403` no histórico de jobs | a identidade não tem `bigquery.jobs.listAll`; o script imprime o comando que concede |
 | Falha só em algumas tabelas | rode o mesmo comando de novo; ele pula o que já foi |
 | Verificação acusa tabela sem arquivo | a pasta existe mas o extract não gerou nada — rode de novo |
 | `conferir_views` acusa divergência em tudo | escritas não foram congeladas (passo 5) — o perfil e o Parquet descrevem estados diferentes |
