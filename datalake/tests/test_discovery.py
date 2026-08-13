@@ -240,3 +240,69 @@ def test_schema_vazio_sem_filtro_nao_tenta_amostra():
 
     with _pytest.raises(ConnectorError, match="Confira o nome do schema"):
         inspect_schema(_ConectorFake([]), "INEXISTENTE")
+
+
+# ------------------------------------------------------ busca por objeto
+class _CursorBusca:
+    """Cursor que devolve objetos ou sinonimos conforme a consulta."""
+
+    def __init__(self, objetos, sinonimos):
+        self._objetos, self._sinonimos = objetos, sinonimos
+        self._resultado = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def execute(self, sql, binds=None):
+        self.ultimo_bind = binds
+        self._resultado = self._sinonimos if "all_synonyms" in sql else self._objetos
+        return self
+
+    def fetchall(self):
+        return self._resultado
+
+
+class _ConectorBusca:
+    def __init__(self, objetos, sinonimos=()):
+        self.cursor_fake = _CursorBusca(list(objetos), list(sinonimos))
+        self._con = self
+
+    def cursor(self):
+        return self.cursor_fake
+
+    def open(self):
+        pass
+
+
+def test_find_encontra_view_e_resolve_sinonimo():
+    from datalake.discovery import find_objects
+
+    conector = _ConectorBusca(
+        objetos=[("CNP", "VEICULOS", "TABLE"), ("PUBLIC", "VEI", "SYNONYM")],
+        sinonimos=[("PUBLIC", "VEI", "CNP", "VEICULOS")],
+    )
+    achados = find_objects(conector, "VEI")
+
+    tipos = {o.name: o.object_type for o in achados}
+    assert tipos == {"VEICULOS": "TABLE", "VEI": "SYNONYM"}
+    sinonimo = next(o for o in achados if o.object_type == "SYNONYM")
+    assert sinonimo.target == "CNP.VEICULOS"   # aponta para a tabela real
+
+
+def test_find_com_nome_solto_vira_busca_por_conteudo():
+    from datalake.discovery import find_objects
+
+    conector = _ConectorBusca(objetos=[])
+    find_objects(conector, "VEI")
+    assert conector.cursor_fake.ultimo_bind["padrao"] == "%VEI%"
+
+
+def test_find_com_curinga_explicito_e_respeitado():
+    from datalake.discovery import find_objects
+
+    conector = _ConectorBusca(objetos=[])
+    find_objects(conector, "VEI%")
+    assert conector.cursor_fake.ultimo_bind["padrao"] == "VEI%"

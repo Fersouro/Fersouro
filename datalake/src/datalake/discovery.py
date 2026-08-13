@@ -94,6 +94,74 @@ class TableInfo:
         return ""
 
 
+@dataclass
+class ObjectInfo:
+    """Qualquer objeto consultavel: tabela, view, sinonimo ou view materializada."""
+
+    owner: str
+    name: str
+    object_type: str
+    target: str | None = None   # preenchido para sinonimo: OWNER.OBJETO de destino
+
+    @property
+    def is_queryable(self) -> bool:
+        return self.object_type in ("TABLE", "VIEW", "MATERIALIZED VIEW", "SYNONYM")
+
+
+# Tipos que dao para ler com SELECT. Sinonimo entra porque aponta para um deles.
+QUERYABLE_TYPES = ("TABLE", "VIEW", "MATERIALIZED VIEW", "SYNONYM")
+
+
+def find_objects(connector: Any, pattern: str) -> list[ObjectInfo]:
+    """Procura um nome em todos os schemas, em qualquer tipo de objeto.
+
+    'all_tables' enxerga so tabelas. Um ERP costuma expor dados por view ou
+    sinonimo, e nesse caso a busca por tabela nao acha nada -- sem dizer que o
+    objeto existe logo ali, com outro tipo.
+    """
+    connector.open()
+    padrao = pattern.upper()
+    if "%" not in padrao and "_" not in padrao:
+        padrao = f"%{padrao}%"   # nome solto vira busca por conteudo
+
+    lista = ", ".join(f"'{t}'" for t in QUERYABLE_TYPES)
+    with connector._con.cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT owner, object_name, object_type
+              FROM all_objects
+             WHERE object_name LIKE :padrao
+               AND object_type IN ({lista})
+             ORDER BY object_type, owner, object_name
+            """,
+            {"padrao": padrao},
+        )
+        objetos = [
+            ObjectInfo(owner=owner, name=nome, object_type=tipo)
+            for owner, nome, tipo in cur.fetchall()
+        ]
+
+        # Sinonimo sem o destino nao serve de nada: resolve para onde aponta.
+        if any(o.object_type == "SYNONYM" for o in objetos):
+            cur.execute(
+                """
+                SELECT owner, synonym_name, table_owner, table_name
+                  FROM all_synonyms
+                 WHERE synonym_name LIKE :padrao
+                """,
+                {"padrao": padrao},
+            )
+            destinos = {
+                (owner, nome): f"{dono_alvo}.{tabela_alvo}"
+                for owner, nome, dono_alvo, tabela_alvo in cur.fetchall()
+            }
+            for objeto in objetos:
+                if objeto.object_type == "SYNONYM":
+                    objeto.target = destinos.get((objeto.owner, objeto.name))
+
+    return objetos
+
+
 def list_schemas(connector: Any) -> list[tuple[str, int]]:
     """Schemas visiveis para o usuario conectado e quantas tabelas cada um tem."""
     connector.open()

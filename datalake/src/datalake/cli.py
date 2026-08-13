@@ -142,6 +142,24 @@ def cmd_discover(args, settings: Settings) -> int:
         print(connector.describe())
         print()
 
+        if args.find:
+            from .discovery import find_objects
+
+            objetos = find_objects(connector, args.find)
+            if not objetos:
+                print(f"Nada chamado '{args.find}' em nenhum schema visivel.")
+                print("Se voce sabe que existe, o usuario nao tem permissao de leitura.")
+                return EXIT_OK
+            print(
+                _table(
+                    ["TIPO", "SCHEMA", "OBJETO", "APONTA PARA"],
+                    [[o.object_type, o.owner, o.name, o.target or "-"] for o in objetos],
+                )
+            )
+            print(f"\n{len(objetos)} objeto(s). View e sinonimo se leem como tabela: "
+                  f"use schema + nome na configuracao da fonte.")
+            return EXIT_OK
+
         if args.schemas or not args.schema:
             schemas = list_schemas(connector)
             print(_table(["SCHEMA", "TABELAS"], schemas))
@@ -452,6 +470,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-s", "--source", required=True)
     p.add_argument("--schema", help="schema (owner) a inspecionar")
     p.add_argument("--schemas", action="store_true", help="so lista os schemas visiveis")
+    p.add_argument("--find", metavar="NOME",
+                   help="procura um nome em todos os schemas, em tabela, view, "
+                        "sinonimo ou view materializada. Ex.: --find VEI")
     p.add_argument("--filter", action="append",
                    help="filtro LIKE no nome da tabela; repita para varios: "
                         "--filter 'VEI%%' --filter 'FAT%%'")
