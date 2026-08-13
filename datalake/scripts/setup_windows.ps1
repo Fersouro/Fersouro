@@ -40,6 +40,7 @@ param(
     [int]   $MinRows     = 0,
     [string[]]$Filter    = @(),   # aceita varios: -Filter "VEI%","FAT%"
     [switch]$Write,
+    [switch]$Update,   # descarta o projeto baixado e pega a versao atual
     [switch]$Force
 )
 
@@ -69,6 +70,13 @@ $raiz = $PSScriptRoot
 if (-not (Test-Path (Join-Path $raiz "pyproject.toml"))) {
     $raiz = Split-Path $PSScriptRoot -Parent   # script vive em scripts/
 }
+if ($Update) {
+    # Reaproveitar copia antiga faz o script novo rodar sobre codigo velho, e o
+    # sintoma e um comando "que nao existe". -Update descarta e pega o atual.
+    Get-ChildItem -Path (Get-Location) -Filter "Fersouro-*" -Directory -ErrorAction SilentlyContinue |
+        ForEach-Object { Aviso "removendo copia antiga: $($_.Name)"; Remove-Item $_.FullName -Recurse -Force }
+}
+
 if (-not (Test-Path (Join-Path $raiz "pyproject.toml"))) {
     # Antes de baixar de novo, procura uma copia ja extraida por aqui: sem isso
     # cada reexecucao rebaixa o zip inteiro sem necessidade.
