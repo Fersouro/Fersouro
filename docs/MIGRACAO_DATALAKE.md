@@ -177,6 +177,9 @@ da sua máquina.
 
 Os scripts `.sh` continuam válidos para quem estiver em Linux ou WSL.
 
+O roteiro operacional completo — pré-requisitos, ordem dos passos e o que
+costuma falhar em cada um — está em [`RUNBOOK_WINDOWS.md`](RUNBOOK_WINDOWS.md).
+
 ---
 
 ## Fase 3 — Cópia
@@ -273,10 +276,14 @@ Não é igualdade linha a linha, e não promete ser — é o conjunto de agregad
 que muda quando a semântica muda, que é o que se quer pegar. Colunas
 `ARRAY`/`STRUCT` só são contadas, porque não ordenam.
 
-> **O perfil da origem precisa ser coletado antes da fase 5.** Depois que o
-> projeto for excluído não existe mais contra o que comparar: o perfil é tão
-> irreproduzível quanto as próprias views, e pela mesma razão. Guarde o
-> `perfil-bq.json` junto com os `.sql`, fora do projeto GCP.
+> **Quando coletar o perfil da origem: depois de congelar as escritas, antes
+> de excluir o projeto.** As duas pontas importam. Antes da fase 6 porque
+> depois não existe mais contra o que comparar — o perfil é tão irreproduzível
+> quanto as próprias views. E depois do congelamento da fase 5 porque, se a
+> automação escrever entre a exportação e o perfil, o verificador vai acusar
+> divergência que é só defasagem: alarme falso, no exato momento em que você
+> precisa confiar no alarme. O perfil e o Parquet têm que descrever o mesmo
+> estado. Guarde o `perfil-bq.json` junto com os `.sql`, fora do projeto GCP.
 
 Antes de rodar na origem, `--estimar` faz um dry run e informa quantos bytes
 cada perfil leria, sem executar nem cobrar — as views do `gold` cobrem as 848
@@ -322,12 +329,12 @@ Nesta ordem:
 - [ ] Localizado onde roda cada principal do relatório
 - [ ] Fase 3 — bucket copiado
 - [ ] Fase 3 — 850 tabelas exportadas em Parquet/Avro
-- [ ] **Perfil das views coletado no BigQuery** (`conferir_views.py bigquery`)
 - [ ] Fase 4 — contagem, checksums e views conferidos
 - [ ] DuckDB carregado e conferido contra o manifesto
 - [ ] 11 views traduzidas do dialeto BigQuery
 - [ ] Views traduzidas conferidas contra o perfil da origem
 - [ ] Fase 5 — escritas congeladas, revalidado
+- [ ] **Perfil das views coletado** com o alvo já estático (`conferir_views.py bigquery`)
 - [ ] Fase 6 — faturamento desativado, período de espera cumprido
 - [ ] Projeto excluído
 - [ ] Conta encerrada
