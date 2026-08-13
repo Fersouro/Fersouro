@@ -1,9 +1,5 @@
 # Fonte CCM -- Linx DMS, schema CNP do banco GRUPOTERRASUL.
 #
-# Comecando por uma tabela so, de proposito: com ~4 mil linhas ela carrega em
-# segundos e prova o caminho inteiro (bronze -> silver -> gold -> Power BI)
-# antes de mexer em volume grande. As demais entram depois, uma decisao por vez.
-#
 #   datalake run -s ccm            carrega e publica
 #   datalake state                 mostra o que entrou
 name: ccm
@@ -21,17 +17,41 @@ defaults:
   batch_rows: 50000
 
 tables:
-  # Estoque de veiculos. ~4.322 linhas: recarregar tudo custa segundos, entao
-  # nao vale a complexidade de carga incremental aqui.
+  # ---------------------------------------------------------------- veiculos
+  # Estoque. ~4.322 linhas: recarregar tudo custa segundos, entao nao vale a
+  # complexidade de carga incremental.
   - name: VEI_VEICULO
     load_mode: full
+    # Fotos em LONG_RAW: binarios que nao servem a relatorio e trafegariam pela
+    # rede a cada carga.
+    exclude_columns: [FOTO_EXTRA_1, FOTO_EXTRA_2, FOTO_CHASSI]
+    quality:
+      row_count_min: 1
 
-    # Fotos em LONG_RAW. Sem excluir, cada carga arrasta os binarios pela rede
-    # e incha a bronze -- e nenhum deles serve para relatorio.
-    exclude_columns:
-      - FOTO_EXTRA_1
-      - FOTO_EXTRA_2
-      - FOTO_CHASSI
+  # ------------------------------------------------- pos-venda da oficina
+  # As tres tabelas da consulta de contato: nota fiscal de servico, cliente e
+  # ordem de servico.
 
+  # Cadastro de clientes -- nome e telefones.
+  - name: FAT_CLIENTE
+    load_mode: full
+    quality:
+      row_count_min: 1
+
+  # Capa do movimento (nota fiscal). E a maior das tres e cresce todo dia.
+  #
+  # O filtro de 24 meses existe para a primeira carga nao varrer o historico
+  # inteiro do ERP. Para trazer mais historico, aumente o numero -- ou remova a
+  # linha e rode 'datalake ingest -s ccm -t FAT_MOVIMENTO_CAPA --full'.
+  - name: FAT_MOVIMENTO_CAPA
+    load_mode: full
+    filter: "DTA_DOCUMENTO >= ADD_MONTHS(TRUNC(SYSDATE), -24)"
+    quality:
+      row_count_min: 1
+
+  # Ordem de servico da oficina. Sem filtro: o vinculo com a nota e por
+  # CONTATO, e filtrar por data aqui poderia perder OS antiga faturada agora.
+  - name: OFI_ORDEM_SERVICO
+    load_mode: full
     quality:
       row_count_min: 1
