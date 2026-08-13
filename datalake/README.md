@@ -240,6 +240,24 @@ Em `custom` o SQL devolve um número e o esperado é zero.
 
 ---
 
+## Saida em Excel
+
+Ao fim de cada `datalake run`, os modelos gold viram `.xlsx` em `data/export/`
+-- um arquivo por modelo, com cabecalho fixo, filtro pronto e numeros como
+numero (da para somar a coluna direto, sem converter nada).
+
+```bash
+datalake export                      # todos os modelos, formato do settings.yml
+datalake export -m margem_pecas      # so um
+datalake export -f csv               # csv com ';' e BOM, para o Excel pt-BR
+```
+
+Desligue em `settings.yml` (`export.enabled: false`) se nao quiser os arquivos.
+
+Acima de 1.048.575 linhas o `.xlsx` nao comporta: o comando grava o que cabe e
+avisa quantas linhas ficaram de fora. Nesse caso use `-f csv`, ou leia o Parquet
+direto no Power BI, que nao tem esse limite.
+
 ## Consumindo no Power BI
 
 **Opção 1 — pasta Parquet (mais simples).** Obter Dados → Parquet → aponte para

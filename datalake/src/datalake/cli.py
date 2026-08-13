@@ -11,6 +11,7 @@
     datalake gold                      silver  -> gold
     datalake quality                   testes de qualidade sobre a silver
     datalake catalog                   atualiza data/lake.duckdb
+    datalake export                    grava os modelos gold em xlsx/csv
     datalake run                       pipeline completo
     datalake state                     watermarks e ultimas execucoes
     datalake query "SELECT ..."        consulta rapida no lake
@@ -428,6 +429,29 @@ def cmd_catalog(args, settings: Settings) -> int:
     return EXIT_OK
 
 
+def cmd_export(args, settings: Settings) -> int:
+    """Grava os modelos gold em xlsx ou csv."""
+    from .export import export_all
+
+    formato = args.format or settings.export_format
+    destino = Path(args.out) if args.out else settings.export_dir
+    resultados = export_all(settings, formato, args.model, destino)
+    print(
+        _table(
+            ["MODELO", "STATUS", "LINHAS", "ARQUIVO", "OBS"],
+            [
+                [r.model, r.status, f"{r.rows:,}", r.path.name if r.path else "-",
+                 (r.message or "")[:60]]
+                for r in resultados
+            ],
+        )
+    )
+    ok, falhas = _summary(resultados)
+    if resultados:
+        print(f"\nExportacao: {ok} ok, {falhas} com falha -> {destino}")
+    return EXIT_FAILED if falhas else EXIT_OK
+
+
 def cmd_run(args, settings: Settings) -> int:
     """Pipeline completo: bronze -> silver -> gold -> qualidade -> catalogo."""
     run_id = new_run_id()
@@ -441,7 +465,10 @@ def cmd_run(args, settings: Settings) -> int:
         ("GOLD", cmd_gold),
         ("QUALIDADE", cmd_quality),
         ("CATALOGO", cmd_catalog),
+        ("EXPORTACAO", cmd_export),
     ):
+        if name == "EXPORTACAO" and not settings.export_enabled:
+            continue
         if name == "GOLD" and args.skip_gold:
             continue
         print(f"\n----- {name} -----")
@@ -607,11 +634,19 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("catalog", help="atualiza o catalogo lake.duckdb")
     p.set_defaults(func=cmd_catalog)
 
+    p = sub.add_parser("export", help="grava os modelos gold em xlsx ou csv")
+    p.add_argument("-m", "--model", action="append", help="modelo (pode repetir)")
+    p.add_argument("-f", "--format", choices=["xlsx", "csv"], help="padrao: settings.yml")
+    p.add_argument("--out", help="pasta de destino")
+    p.set_defaults(func=cmd_export)
+
     p = sub.add_parser("run", help="pipeline completo")
     add_source_args(p)
     p.add_argument("--full", action="store_true")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--skip-gold", action="store_true")
+    p.add_argument("-f", "--format", choices=["xlsx", "csv"])
+    p.add_argument("--out")
     p.add_argument("--keep-going", action="store_true", help="segue mesmo com falhas")
     p.add_argument("-m", "--model", action="append")
     p.set_defaults(func=cmd_run)

@@ -233,6 +233,9 @@ class Settings:
     duckdb_threads: int
     log_level: str
     log_dir: Path
+    export_enabled: bool
+    export_format: str
+    export_dir: Path
     sources: tuple[SourceConfig, ...]
 
     # ---- caminhos das camadas ----
@@ -275,6 +278,7 @@ def load_settings(project_root: Path | str | None = None) -> Settings:
     lake = data.get("lake") or {}
     runtime = data.get("runtime") or {}
     logging_cfg = data.get("logging") or {}
+    export_cfg = data.get("export") or {}
 
     def _path(value: str | None, default: str) -> Path:
         candidate = Path(value or default)
@@ -298,6 +302,9 @@ def load_settings(project_root: Path | str | None = None) -> Settings:
         compression=str(runtime.get("compression") or "zstd"),
         duckdb_memory_limit=str(runtime.get("duckdb_memory_limit") or "4GB"),
         duckdb_threads=int(runtime.get("duckdb_threads") or 4),
+        export_enabled=bool(export_cfg.get("enabled", True)),
+        export_format=str(export_cfg.get("format") or "xlsx").lower(),
+        export_dir=_path(export_cfg.get("dir"), "./data/export"),
         log_level=str(logging_cfg.get("level") or "INFO").upper(),
         log_dir=_path(logging_cfg.get("dir"), "./logs"),
         sources=tuple(sources),

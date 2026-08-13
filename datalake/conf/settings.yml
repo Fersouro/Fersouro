@@ -21,6 +21,13 @@ runtime:
   duckdb_memory_limit: 4GB
   duckdb_threads: 4
 
+# Ao fim de cada 'datalake run', grava os modelos gold em arquivo pronto para
+# abrir no Excel. O lake continua em Parquet; isto e conveniencia de consumo.
+export:
+  enabled: true
+  format: xlsx            # xlsx | csv
+  dir: ${DATALAKE_ROOT:-./data}/export
+
 logging:
   level: INFO
   dir: ./logs
