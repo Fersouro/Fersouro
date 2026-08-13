@@ -4,6 +4,7 @@
     datalake sources                   lista fontes e tabelas configuradas
     datalake test-connection           testa a conexao com a origem
     datalake discover                  le o dicionario de dados e propõe o YAML
+    datalake peek                      espia as primeiras linhas da origem
     datalake ingest                    origem  -> bronze
     datalake silver                    bronze  -> silver
     datalake gold                      silver  -> gold
@@ -19,7 +20,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 from .config import ConfigError, Settings, load_settings
 from .connectors.base import ConnectorError
@@ -205,6 +206,55 @@ def cmd_discover(args, settings: Settings) -> int:
         return EXIT_OK
     finally:
         connector.close()
+
+
+def cmd_peek(args, settings: Settings) -> int:
+    """Mostra as primeiras linhas de um objeto da origem, sem carregar nada."""
+    from .connectors.registry import get_connector
+
+    source = settings.source(args.source)
+    connector = get_connector(source, settings)
+    if not hasattr(connector, "sample"):
+        print(f"'peek' nao suportado pela fonte '{source.name}' ({source.type}).",
+              file=sys.stderr)
+        return EXIT_CONFIG
+
+    try:
+        connector.open()
+        descricao, linhas = connector.sample(args.object, args.limit)
+        nomes = [d[0] for d in descricao]
+
+        print(f"--- {args.object}: {len(linhas)} primeira(s) linha(s) ---\n")
+        print(
+            _table(
+                nomes,
+                [[_curto(valor) for valor in linha] for linha in linhas],
+            )
+        )
+        print("\n--- colunas ---")
+        print(
+            _table(
+                ["COLUNA", "TIPO ORACLE", "PREC", "ESC", "ACEITA NULO"],
+                [
+                    [d[0], getattr(d[1], "name", d[1]), d[4] or "", d[5] or "",
+                     "sim" if d[6] else "nao"]
+                    for d in descricao
+                ],
+            )
+        )
+        if not linhas:
+            print("\nObjeto acessivel, porem sem linhas.")
+        return EXIT_OK
+    finally:
+        connector.close()
+
+
+def _curto(valor: Any, largura: int = 30) -> str:
+    """Encurta valores longos para a tabela nao virar uma parede de texto."""
+    if valor is None:
+        return ""
+    texto = str(valor).replace("\n", " ").replace("\r", " ")
+    return texto if len(texto) <= largura else texto[: largura - 1] + "~"
 
 
 def cmd_ingest(args, settings: Settings) -> int:
@@ -482,6 +532,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--write", help="grava o YAML gerado no caminho informado")
     p.add_argument("--force", action="store_true", help="sobrescreve o arquivo existente")
     p.set_defaults(func=cmd_discover)
+
+    p = sub.add_parser("peek", help="mostra as primeiras linhas de um objeto da origem")
+    p.add_argument("-s", "--source", required=True)
+    p.add_argument("-o", "--object", required=True,
+                   metavar="OBJETO", help="OBJETO ou SCHEMA.OBJETO, ex.: CNP.VEI_VEI")
+    p.add_argument("-n", "--limit", type=int, default=10, help="linhas (padrao 10)")
+    p.set_defaults(func=cmd_peek)
 
     p = sub.add_parser("ingest", help="origem -> bronze")
     add_source_args(p)

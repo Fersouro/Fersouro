@@ -272,6 +272,33 @@ class OracleConnector(Connector):
             cur.execute(sql, binds)
             return int(cur.fetchone()[0])
 
+    def sample(self, qualified: str, limit: int = 10) -> tuple[list[Any], list[tuple]]:
+        """Le as primeiras linhas de um objeto, para inspecao.
+
+        Serve para view e sinonimo tambem: o SELECT nao distingue. Devolve o
+        ``cursor.description`` junto porque os tipos das colunas sao metade da
+        resposta na hora de configurar a tabela.
+        """
+        self.open()
+        oracledb = self._module()
+        partes = qualified.split(".")
+        if len(partes) > 2:
+            raise ConnectorError(
+                f"Nome invalido: '{qualified}'. Use OBJETO ou SCHEMA.OBJETO."
+            )
+        relacao = ".".join(_check_identifier(p, "Nome de objeto") for p in partes)
+
+        cur = self._con.cursor()
+        try:
+            cur.arraysize = max(1, min(limit, 1000))
+            cur.outputtypehandler = _lob_as_value(oracledb)
+            cur.execute(f"SELECT * FROM {relacao} WHERE ROWNUM <= :n", {"n": limit})
+            return list(cur.description), cur.fetchall()
+        except Exception as exc:  # noqa: BLE001
+            raise ConnectorError(f"Falha ao ler {qualified}: {exc}") from exc
+        finally:
+            cur.close()
+
     def extract(self, table: TableConfig, since: Any = None) -> Iterator[pa.Table]:
         self.open()
         oracledb = self._module()

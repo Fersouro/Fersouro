@@ -34,6 +34,8 @@ param(
     [string]$SourceName  = "ccm",
     [string]$Schema      = "",
     [string]$Find        = "",   # procura um nome em qualquer schema e tipo
+    [string]$Peek        = "",   # espia as primeiras linhas de um objeto
+    [int]   $PeekLimit   = 10,
     [int]   $Top         = 0,    # 0 = sem limite
     [int]   $MinRows     = 0,
     [string[]]$Filter    = @(),   # aceita varios: -Filter "VEI%","FAT%"
@@ -216,6 +218,15 @@ Ok "conectado"
 
 # -------------------------------------------------------------- 7. discover
 Etapa 7 "Descobrindo o que existe no banco"
+if ($Peek) {
+    Write-Host "    Lendo as primeiras linhas de $Peek..." -ForegroundColor Cyan
+    & $venvPython -m datalake.cli peek -s $SourceName -o $Peek -n $PeekLimit
+    Write-Host ""
+    Write-Host "=== Terminou ===" -ForegroundColor Green
+    Write-Host "Saida completa em: $saida"
+    try { Stop-Transcript | Out-Null } catch { }
+    exit 0
+}
 if ($Find) {
     Write-Host "    Procurando '$Find' em todos os schemas..." -ForegroundColor Cyan
     & $venvPython -m datalake.cli discover -s $SourceName --find $Find
