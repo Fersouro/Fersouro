@@ -5,6 +5,7 @@
     datalake test-connection           testa a conexao com a origem
     datalake discover                  le o dicionario de dados e propõe o YAML
     datalake peek                      espia as primeiras linhas da origem
+    datalake sql "SELECT ..."          consulta de leitura na origem
     datalake ingest                    origem  -> bronze
     datalake silver                    bronze  -> silver
     datalake gold                      silver  -> gold
@@ -204,6 +205,32 @@ def cmd_discover(args, settings: Settings) -> int:
             destino.write_text(to_yaml(source.name, args.schema, tables), encoding="utf-8")
             print(f"\nConfiguracao gravada em {destino}")
             print("Revise as sugestoes de load_mode e watermark antes de rodar o ingest.")
+        return EXIT_OK
+    finally:
+        connector.close()
+
+
+def cmd_sql(args, settings: Settings) -> int:
+    """Executa uma consulta de leitura direto na origem."""
+    from .connectors.registry import get_connector
+
+    source = settings.source(args.source)
+    connector = get_connector(source, settings)
+    if not hasattr(connector, "run_select"):
+        print(f"'sql' nao suportado pela fonte '{source.name}' ({source.type}).",
+              file=sys.stderr)
+        return EXIT_CONFIG
+    try:
+        connector.open()
+        descricao, linhas = connector.run_select(args.sql, args.limit)
+        print(
+            _table(
+                [d[0] for d in descricao],
+                [[_curto(valor, 40) for valor in linha] for linha in linhas],
+            )
+        )
+        print(f"\n{len(linhas)} linha(s)"
+              + (f" (limite {args.limit})" if len(linhas) >= args.limit else ""))
         return EXIT_OK
     finally:
         connector.close()
@@ -544,6 +571,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--write", help="grava o YAML gerado no caminho informado")
     p.add_argument("--force", action="store_true", help="sobrescreve o arquivo existente")
     p.set_defaults(func=cmd_discover)
+
+    p = sub.add_parser("sql", help="consulta de leitura direto na origem")
+    p.add_argument("-s", "--source", required=True)
+    p.add_argument("sql", help="SELECT ... (somente leitura)")
+    p.add_argument("-n", "--limit", type=int, default=100)
+    p.set_defaults(func=cmd_sql)
 
     p = sub.add_parser("peek", help="mostra as primeiras linhas de um objeto da origem")
     p.add_argument("-s", "--source", required=True)

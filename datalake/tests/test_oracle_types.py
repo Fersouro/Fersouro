@@ -152,3 +152,38 @@ def test_sql_rejeita_nome_de_tabela_suspeito(settings):
     table = TableConfig(name="CLIENTES; DELETE FROM X")
     with pytest.raises(ConnectorError):
         _connector(settings)._build_query(table, None)
+
+
+# ------------------------------------------------- barreira de somente leitura
+@pytest.mark.parametrize(
+    "consulta",
+    [
+        "UPDATE VEI_VEICULO SET PRECO = 0",
+        "delete from vei_veiculo",
+        "DROP TABLE VEI_VEICULO",
+        "TRUNCATE TABLE X",
+        "BEGIN meu_proc; END;",
+        "MERGE INTO X USING Y ON (1=1)",
+    ],
+)
+def test_run_select_recusa_escrita(settings, consulta):
+    """A conexao pode ser a do dono do schema: escrita nao passa por aqui."""
+    conector = _connector(settings)
+    conector._con = object()          # nao deve chegar a usar a conexao
+    conector.open = lambda: None
+    with pytest.raises(ConnectorError, match="Apenas leitura|uma consulta por vez"):
+        conector.run_select(consulta)
+
+
+def test_run_select_recusa_multiplos_comandos(settings):
+    conector = _connector(settings)
+    conector.open = lambda: None
+    with pytest.raises(ConnectorError, match="uma consulta por vez"):
+        conector.run_select("SELECT 1 FROM dual; DROP TABLE X")
+
+
+def test_run_select_recusa_consulta_vazia(settings):
+    conector = _connector(settings)
+    conector.open = lambda: None
+    with pytest.raises(ConnectorError, match="vazia"):
+        conector.run_select("   ")

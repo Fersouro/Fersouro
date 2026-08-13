@@ -272,6 +272,38 @@ class OracleConnector(Connector):
             cur.execute(sql, binds)
             return int(cur.fetchone()[0])
 
+    def run_select(self, sql: str, limit: int = 100) -> tuple[list[Any], list[tuple]]:
+        """Executa uma consulta de leitura na origem e devolve ate ``limit`` linhas.
+
+        Recusa qualquer coisa que nao comece com SELECT ou WITH. A conexao pode
+        ser a do dono do schema, e nesse caso um comando de escrita digitado por
+        engano atingiria o ERP em producao -- a barreira e barata e vale a pena.
+        """
+        self.open()
+        texto = sql.strip().rstrip(";").strip()
+        if not texto:
+            raise ConnectorError("Consulta vazia.")
+        if ";" in texto:
+            raise ConnectorError("Envie uma consulta por vez (sem ';' no meio).")
+        primeira = texto.split(None, 1)[0].upper()
+        if primeira not in ("SELECT", "WITH"):
+            raise ConnectorError(
+                f"Apenas leitura: a consulta comeca com '{primeira}'. "
+                f"Use SELECT ou WITH."
+            )
+
+        oracledb = self._module()
+        cur = self._con.cursor()
+        try:
+            cur.arraysize = max(1, min(limit, 1000))
+            cur.outputtypehandler = _lob_as_value(oracledb)
+            cur.execute(texto)
+            return list(cur.description), cur.fetchmany(limit)
+        except Exception as exc:  # noqa: BLE001
+            raise ConnectorError(f"Falha na consulta: {exc}") from exc
+        finally:
+            cur.close()
+
     def sample(self, qualified: str, limit: int = 10) -> tuple[list[Any], list[tuple]]:
         """Le as primeiras linhas de um objeto, para inspecao.
 

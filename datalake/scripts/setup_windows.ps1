@@ -35,6 +35,7 @@ param(
     [string]$Schema      = "",
     [string]$Find        = "",   # procura um nome em qualquer schema e tipo
     [string]$Peek        = "",   # espia as primeiras linhas de um objeto
+    [string]$Sql         = "",   # consulta de leitura direto na origem
     [int]   $PeekLimit   = 10,
     [int]   $Top         = 0,    # 0 = sem limite
     [int]   $MinRows     = 0,
@@ -226,6 +227,15 @@ Ok "conectado"
 
 # -------------------------------------------------------------- 7. discover
 Etapa 7 "Descobrindo o que existe no banco"
+if ($Sql) {
+    Write-Host "    Executando a consulta..." -ForegroundColor Cyan
+    & $venvPython -m datalake.cli sql -s $SourceName $Sql
+    Write-Host ""
+    Write-Host "=== Terminou ===" -ForegroundColor Green
+    Write-Host "Saida completa em: $saida"
+    try { Stop-Transcript | Out-Null } catch { }
+    exit 0
+}
 if ($Peek) {
     Write-Host "    Lendo as primeiras linhas de $Peek..." -ForegroundColor Cyan
     & $venvPython -m datalake.cli peek -s $SourceName -o $Peek -n $PeekLimit
