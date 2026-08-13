@@ -84,6 +84,7 @@ class TableConfig:
     watermark_type: str = "timestamp"
     lookback: float = 0.0
     columns: tuple[str, ...] = ()
+    exclude_columns: tuple[str, ...] = ()
     filter: str | None = None
     batch_rows: int = 200_000
     column_types: dict[str, str] = field(default_factory=dict)
@@ -122,6 +123,17 @@ class TableConfig:
             if self.watermark_column.upper() not in upper:
                 raise ConfigError(
                     f"[{where}] 'watermark_column' precisa estar na lista 'columns'"
+                )
+        if self.columns and self.exclude_columns:
+            raise ConfigError(
+                f"[{where}] use 'columns' (lista branca) ou 'exclude_columns' "
+                f"(lista negra), nao os dois"
+            )
+        if self.exclude_columns and self.watermark_column:
+            excluidas = {c.upper() for c in self.exclude_columns}
+            if self.watermark_column.upper() in excluidas:
+                raise ConfigError(
+                    f"[{where}] 'watermark_column' nao pode estar em 'exclude_columns'"
                 )
         if self.batch_rows <= 0:
             raise ConfigError(f"[{where}] batch_rows deve ser > 0")
@@ -182,6 +194,7 @@ class SourceConfig:
                 watermark_type=merged.get("watermark_type", "timestamp"),
                 lookback=float(merged.get("lookback") or 0),
                 columns=tuple(merged.get("columns") or ()),
+                exclude_columns=tuple(merged.get("exclude_columns") or ()),
                 filter=merged.get("filter"),
                 batch_rows=int(merged.get("batch_rows") or 200_000),
                 column_types=dict(merged.get("column_types") or {}),

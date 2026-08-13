@@ -142,3 +142,21 @@ def test_caminhos_do_lake(settings):
     assert settings.gold.name == "gold"
     assert settings.control_db.parent.name == "_control"
     assert {s.name for s in settings.sources} == {"erp"}
+
+
+def test_exclude_columns_e_columns_sao_exclusivos():
+    with pytest.raises(ConfigError, match="lista branca"):
+        _source(tables=[{"name": "T", "columns": ["A"], "exclude_columns": ["B"]}])
+
+
+def test_watermark_nao_pode_ser_excluida():
+    with pytest.raises(ConfigError, match="exclude_columns"):
+        _source(tables=[{
+            "name": "T", "load_mode": "incremental", "primary_key": ["ID"],
+            "watermark_column": "DT", "exclude_columns": ["DT"],
+        }])
+
+
+def test_exclude_columns_e_lida_da_configuracao():
+    tabela = _source(tables=[{"name": "T", "exclude_columns": ["FOTO_1", "FOTO_2"]}]).tables[0]
+    assert tabela.exclude_columns == ("FOTO_1", "FOTO_2")

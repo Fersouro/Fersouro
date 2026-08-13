@@ -1,16 +1,11 @@
-# Fonte CCM -- schema dentro do mesmo Oracle.
+# Fonte CCM -- Linx DMS, schema CNP do banco GRUPOTERRASUL.
 #
-# Ainda sem tabelas: elas entram aqui depois do discover, que precisa rodar de
-# uma maquina com rota ate o banco (rede interna ou VPN):
+# Comecando por uma tabela so, de proposito: com ~4 mil linhas ela carrega em
+# segundos e prova o caminho inteiro (bronze -> silver -> gold -> Power BI)
+# antes de mexer em volume grande. As demais entram depois, uma decisao por vez.
 #
-#   python3 -m datalake.cli test-connection -s ccm
-#   python3 -m datalake.cli discover -s ccm --schemas
-#   python3 -m datalake.cli discover -s ccm --schema CCM
-#   python3 -m datalake.cli discover -s ccm --schema CCM \
-#           --write conf/sources/ccm.yml --force
-#
-# O ultimo comando sobrescreve este arquivo com as tabelas ja preenchidas.
-# Enquanto 'tables' estiver vazio, o ingest ignora esta fonte.
+#   datalake run -s ccm            carrega e publica
+#   datalake state                 mostra o que entrou
 name: ccm
 type: oracle
 
@@ -22,11 +17,21 @@ connection:
   tcp_connect_timeout: 15
 
 defaults:
-  # Confirmado pelo 'discover --schemas' em 13/08/2026: o sistema se chama CCM
-  # mas os dados vivem no schema CNP (2875 tabelas). Os demais schemas visiveis
-  # -- MDSYS, SYS, XDB, CTXSYS, SYSTEM -- sao internos do Oracle.
   schema: CNP
-  load_mode: full
-  batch_rows: 200000
+  batch_rows: 50000
 
-tables: []
+tables:
+  # Estoque de veiculos. ~4.322 linhas: recarregar tudo custa segundos, entao
+  # nao vale a complexidade de carga incremental aqui.
+  - name: VEI_VEICULO
+    load_mode: full
+
+    # Fotos em LONG_RAW. Sem excluir, cada carga arrasta os binarios pela rede
+    # e incha a bronze -- e nenhum deles serve para relatorio.
+    exclude_columns:
+      - FOTO_EXTRA_1
+      - FOTO_EXTRA_2
+      - FOTO_CHASSI
+
+    quality:
+      row_count_min: 1

@@ -16,6 +16,8 @@ from __future__ import annotations
 import datetime as dt
 import re
 import shutil
+
+import duckdb
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -130,6 +132,23 @@ def build_model(
         control.finish_run(run_id, "gold", status="success", rows=rows, table_name=name)
         log.info("[gold.%s] %s linhas (%.1fs)", name, f"{rows:,}", duration)
         return GoldResult(name, "success", rows, duration)
+
+    except duckdb.CatalogException as exc:
+        # O modelo cita um objeto que a silver ainda nao tem. Num lake com varias
+        # fontes isso e rotina -- carregou uma, a outra ainda nao -- e tratar como
+        # falha faria a execucao inteira parecer quebrada.
+        shutil.rmtree(staging, ignore_errors=True)
+        faltante = str(exc).split("\n")[0]
+        control.finish_run(
+            run_id, "gold", status="skipped", table_name=name, message=faltante
+        )
+        log.warning("[gold.%s] ignorado: depende de objeto ausente na silver", name)
+        return GoldResult(
+            name,
+            "skipped",
+            duration_s=(dt.datetime.now() - started).total_seconds(),
+            message="depende de objeto ainda nao carregado",
+        )
 
     except Exception as exc:  # noqa: BLE001
         shutil.rmtree(staging, ignore_errors=True)

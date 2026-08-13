@@ -247,3 +247,17 @@ def test_catalogo_registra_silver_e_gold(settings, control):
 )
 def test_snake_case(entrada, esperado):
     assert snake_case(entrada) == esperado
+
+
+def test_gold_ignora_modelo_com_dependencia_ausente(settings, control, project):
+    """Modelo citando tabela que a silver nao tem e pendencia, nao falha."""
+    (project / "sql" / "gold" / "90_orfao.sql").write_text(
+        "SELECT * FROM tabela_que_nao_existe", encoding="utf-8"
+    )
+    _ingest(settings, control)
+    _silver(settings, control)
+    resultados = {r.model: r for r in gold.build_all(settings, control, new_run_id())}
+
+    assert resultados["orfao"].status == "skipped"
+    assert resultados["orfao"].ok                      # nao derruba a execucao
+    assert resultados["pedidos_cliente"].status == "success"

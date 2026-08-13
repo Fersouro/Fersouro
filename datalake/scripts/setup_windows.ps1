@@ -36,6 +36,7 @@ param(
     [string]$Find        = "",   # procura um nome em qualquer schema e tipo
     [string]$Peek        = "",   # espia as primeiras linhas de um objeto
     [string]$Sql         = "",   # consulta de leitura direto na origem
+    [switch]$Run,                # carrega: bronze -> silver -> gold
     [int]   $PeekLimit   = 10,
     [int]   $Top         = 0,    # 0 = sem limite
     [int]   $MinRows     = 0,
@@ -227,6 +228,22 @@ Ok "conectado"
 
 # -------------------------------------------------------------- 7. discover
 Etapa 7 "Descobrindo o que existe no banco"
+if ($Run) {
+    Write-Host "    Carregando: bronze -> silver -> gold" -ForegroundColor Cyan
+    & $venvPython -m datalake.cli run -s $SourceName
+    $codigo = $LASTEXITCODE
+    Write-Host ""
+    if ($codigo -eq 0) {
+        Write-Host "=== Carga concluida ===" -ForegroundColor Green
+        Write-Host "Os dados estao em: $(Join-Path $raiz 'data\gold')"
+        Write-Host "Aponte o Power BI para essa pasta (conector Parquet)."
+    } else {
+        Write-Host "=== Carga terminou com falhas (veja acima) ===" -ForegroundColor Yellow
+    }
+    Write-Host "Saida completa em: $saida"
+    try { Stop-Transcript | Out-Null } catch { }
+    exit $codigo
+}
 if ($Sql) {
     Write-Host "    Executando a consulta..." -ForegroundColor Cyan
     & $venvPython -m datalake.cli sql -s $SourceName $Sql

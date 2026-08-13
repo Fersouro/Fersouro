@@ -236,10 +236,46 @@ class OracleConnector(Connector):
         )
 
     # -------------------------------------------------------------------- SQL
-    def _column_list(self, table: TableConfig) -> str:
-        if not table.columns:
+    def _column_list(self, table: TableConfig, resolvidas: list[str] | None = None) -> str:
+        nomes = resolvidas if resolvidas is not None else list(table.columns)
+        if not nomes:
             return "*"
-        return ", ".join(_check_identifier(c, "Nome de coluna") for c in table.columns)
+        return ", ".join(_check_identifier(c, "Nome de coluna") for c in nomes)
+
+    def _resolve_columns(self, table: TableConfig) -> list[str] | None:
+        """Expande exclude_columns na lista real de colunas do objeto.
+
+        Descobre os nomes com um SELECT que nao devolve linha alguma, e nao pelo
+        dicionario: assim funciona para tabela, view e sinonimo, e independe de
+        privilegio sobre as views de catalogo.
+
+        Importa porque projetar so o necessario evita trazer LONG_RAW e BLOB
+        pela rede -- numa tabela com foto, e a diferenca entre megabytes e
+        gigabytes por carga.
+        """
+        if table.columns or not table.exclude_columns:
+            return None
+        with self._con.cursor() as cur:
+            cur.execute(f"SELECT * FROM {self._from_clause(table)} WHERE 1 = 0")
+            nomes = [d[0] for d in cur.description]
+        excluir = {c.upper() for c in table.exclude_columns}
+        ausentes = excluir - {n.upper() for n in nomes}
+        if ausentes:
+            log.warning(
+                "[%s] exclude_columns cita coluna(s) inexistente(s): %s",
+                table.qualified_name,
+                ", ".join(sorted(ausentes)),
+            )
+        restantes = [n for n in nomes if n.upper() not in excluir]
+        if not restantes:
+            raise ConnectorError(
+                f"[{table.qualified_name}] exclude_columns removeu todas as colunas."
+            )
+        log.info(
+            "[%s] %d coluna(s) de %d apos exclude_columns",
+            table.qualified_name, len(restantes), len(nomes),
+        )
+        return restantes
 
     def _from_clause(self, table: TableConfig) -> str:
         name = _check_identifier(table.name, "Nome de tabela")
@@ -258,9 +294,12 @@ class OracleConnector(Connector):
             clauses.append(f"({table.filter})")
         return (" WHERE " + " AND ".join(clauses)) if clauses else "", binds
 
-    def _build_query(self, table: TableConfig, since: Any) -> tuple[str, dict[str, Any]]:
+    def _build_query(
+        self, table: TableConfig, since: Any, resolvidas: list[str] | None = None
+    ) -> tuple[str, dict[str, Any]]:
         where, binds = self._where_clause(table, since)
-        sql = f"SELECT {self._column_list(table)} FROM {self._from_clause(table)}{where}"
+        colunas = self._column_list(table, resolvidas)
+        sql = f"SELECT {colunas} FROM {self._from_clause(table)}{where}"
         return sql, binds
 
     # --------------------------------------------------------------- extracao
@@ -334,7 +373,7 @@ class OracleConnector(Connector):
     def extract(self, table: TableConfig, since: Any = None) -> Iterator[pa.Table]:
         self.open()
         oracledb = self._module()
-        sql, binds = self._build_query(table, since)
+        sql, binds = self._build_query(table, since, self._resolve_columns(table))
         batch_rows = table.batch_rows or self.settings.batch_rows
         arraysize = min(self.settings.arraysize, batch_rows)
 
