@@ -33,6 +33,9 @@ param(
     [string]$User        = "FERNANDO_DEV",
     [string]$SourceName  = "ccm",
     [string]$Schema      = "",
+    [int]   $Top         = 0,    # 0 = sem limite
+    [int]   $MinRows     = 0,
+    [string]$Filter      = "",
     [switch]$Write,
     [switch]$Force
 )
@@ -63,6 +66,18 @@ $raiz = $PSScriptRoot
 if (-not (Test-Path (Join-Path $raiz "pyproject.toml"))) {
     $raiz = Split-Path $PSScriptRoot -Parent   # script vive em scripts/
 }
+if (-not (Test-Path (Join-Path $raiz "pyproject.toml"))) {
+    # Antes de baixar de novo, procura uma copia ja extraida por aqui: sem isso
+    # cada reexecucao rebaixa o zip inteiro sem necessidade.
+    $existente = Get-ChildItem -Path (Get-Location) -Filter "pyproject.toml" -Recurse -ErrorAction SilentlyContinue |
+                 Where-Object { $_.Directory.Name -eq "datalake" } |
+                 Select-Object -First 1
+    if ($existente) {
+        $raiz = $existente.DirectoryName
+        Ok "reaproveitando o projeto ja baixado"
+    }
+}
+
 if (-not (Test-Path (Join-Path $raiz "pyproject.toml"))) {
     Aviso "Projeto nao encontrado ao lado do script; baixando do GitHub."
     $branch  = "claude/datalake-from-scratch-jkv3wq"
@@ -205,12 +220,17 @@ Etapa 7 "Descobrindo o que existe no banco"
 if ($Schema) {
     Write-Host ""
     Write-Host "    Inspecionando o schema $Schema..." -ForegroundColor Cyan
-    if ($Write) {
-        & $venvPython -m datalake.cli discover -s $SourceName --schema $Schema `
-            --write "conf/sources/$SourceName.yml" --force
-    } else {
-        & $venvPython -m datalake.cli discover -s $SourceName --schema $Schema
+
+    $argumentos = @("discover", "-s", $SourceName, "--schema", $Schema)
+    if ($Top -gt 0)     { $argumentos += @("--top", $Top) }
+    if ($MinRows -gt 0) { $argumentos += @("--min-rows", $MinRows) }
+    if ($Filter)        { $argumentos += @("--filter", $Filter) }
+    if ($Write)         { $argumentos += @("--write", "conf/sources/$SourceName.yml", "--force") }
+
+    if (-not $Top -and -not $MinRows -and -not $Filter) {
+        Aviso "Sem --Top/--MinRows/--Filter: em schema grande isso pode demorar e gerar saida enorme."
     }
+    & $venvPython -m datalake.cli @argumentos
 }
 
 Write-Host ""
