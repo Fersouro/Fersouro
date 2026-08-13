@@ -170,19 +170,29 @@ def find_objects(connector: Any, pattern: str) -> list[ObjectInfo]:
     return objetos
 
 
-def list_schemas(connector: Any) -> list[tuple[str, int]]:
-    """Schemas visiveis para o usuario conectado e quantas tabelas cada um tem."""
+def list_schemas(connector: Any) -> list[tuple[str, int, int, int]]:
+    """Schemas visiveis: (owner, total, tabelas, views)."""
     connector.open()
+    lista = ", ".join(f"'{t}'" for t in ("TABLE", "VIEW", "MATERIALIZED VIEW"))
     with connector._con.cursor() as cur:
+        # all_objects, e nao all_tables: um schema que expoe tudo por view nao
+        # aparecia na listagem, e a conclusao virava "esse schema nao existe".
         cur.execute(
-            """
-            SELECT owner, COUNT(*) AS qtd
-              FROM all_tables
+            f"""
+            SELECT owner,
+                   COUNT(*) AS qtd,
+                   SUM(CASE WHEN object_type = 'TABLE' THEN 1 ELSE 0 END) AS tabelas,
+                   SUM(CASE WHEN object_type <> 'TABLE' THEN 1 ELSE 0 END) AS views
+              FROM all_objects
+             WHERE object_type IN ({lista})
              GROUP BY owner
              ORDER BY qtd DESC, owner
             """
         )
-        return [(row[0], int(row[1])) for row in cur.fetchall()]
+        return [
+            (row[0], int(row[1]), int(row[2] or 0), int(row[3] or 0))
+            for row in cur.fetchall()
+        ]
 
 
 def normalize_filters(table_filter: str | list[str] | None) -> list[str]:

@@ -163,7 +163,7 @@ def cmd_discover(args, settings: Settings) -> int:
 
         if args.schemas or not args.schema:
             schemas = list_schemas(connector)
-            print(_table(["SCHEMA", "TABELAS"], schemas))
+            print(_table(["SCHEMA", "OBJETOS", "TABELAS", "VIEWS"], schemas))
             if not args.schema:
                 print("\nEscolha um e rode: datalake discover -s "
                       f"{source.name} --schema NOME")
@@ -222,7 +222,18 @@ def cmd_peek(args, settings: Settings) -> int:
 
     try:
         connector.open()
-        descricao, linhas = connector.sample(args.object, args.limit)
+        try:
+            descricao, linhas = connector.sample(args.object, args.limit)
+        except ConnectorError as exc:
+            if "ORA-00942" in str(exc):
+                # O Oracle usa o mesmo erro para "nao existe" e "sem permissao".
+                raise ConnectorError(
+                    f"{exc}\n\nORA-00942 quer dizer uma de duas coisas: o objeto "
+                    f"nao existe com esse nome, ou seu usuario nao tem SELECT nele.\n"
+                    f"Para descobrir qual: datalake discover -s {source.name} "
+                    f"--find {args.object.split('.')[-1]}"
+                ) from exc
+            raise
         nomes = [d[0] for d in descricao]
 
         print(f"--- {args.object}: {len(linhas)} primeira(s) linha(s) ---\n")
