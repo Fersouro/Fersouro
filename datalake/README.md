@@ -90,6 +90,11 @@ python3 -m datalake.cli discover -s oracle_erp --schema ERP \
         --filter 'PED%' --write conf/sources/oracle_erp.yml --force
 ```
 
+Uma fonte pode existir **sem nenhuma tabela declarada** — é justamente o estado
+de quem ainda não rodou o `discover`. Ela responde a `test-connection` e
+`discover`, e é ignorada pelo `ingest` até ganhar tabelas. É por isso que a
+ordem funciona: cria a fonte com a conexão → descobre → carrega.
+
 O `discover` lê `all_tables`, `all_tab_columns` e `all_constraints` e propõe,
 para cada tabela: chave primária (a declarada no banco), coluna de watermark (por
 nome — `DT_ATUALIZACAO`, `UPDATED_AT`, ...) e modo de carga (`full` até ~200 mil

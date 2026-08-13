@@ -142,6 +142,12 @@ class SourceConfig:
         for table in self.tables:
             if table.key == wanted:
                 return table
+        if not self.tables:
+            raise ConfigError(
+                f"A fonte '{self.name}' ainda nao tem tabelas configuradas. "
+                f"Rode: datalake discover -s {self.name} --schema <SCHEMA> "
+                f"--write conf/sources/{self.name}.yml --force"
+            )
         available = ", ".join(t.name for t in self.tables)
         raise ConfigError(
             f"Tabela '{name}' nao existe na fonte '{self.name}'. Disponiveis: {available}"
@@ -157,9 +163,10 @@ class SourceConfig:
             raise ConfigError(f"Fonte '{name}' sem 'type' (ex.: oracle, duckdb)")
 
         defaults = data.get("defaults") or {}
+        # Uma fonte sem tabelas e valida: e o estado inicial de quem ainda vai
+        # rodar 'discover' para descobrir o que existe no schema. Ela responde a
+        # test-connection e discover, e e ignorada pelo ingest.
         raw_tables = data.get("tables") or []
-        if not raw_tables:
-            raise ConfigError(f"Fonte '{name}' nao declarou nenhuma tabela")
 
         tables: list[TableConfig] = []
         for raw in raw_tables:

@@ -1,0 +1,31 @@
+# Fonte CCM -- schema dentro do mesmo Oracle.
+#
+# Ainda sem tabelas: elas entram aqui depois do discover, que precisa rodar de
+# uma maquina com rota ate o banco (rede interna ou VPN):
+#
+#   python3 -m datalake.cli test-connection -s ccm
+#   python3 -m datalake.cli discover -s ccm --schemas
+#   python3 -m datalake.cli discover -s ccm --schema CCM
+#   python3 -m datalake.cli discover -s ccm --schema CCM \
+#           --write conf/sources/ccm.yml --force
+#
+# O ultimo comando sobrescreve este arquivo com as tabelas ja preenchidas.
+# Enquanto 'tables' estiver vazio, o ingest ignora esta fonte.
+name: ccm
+type: oracle
+
+connection:
+  dsn: ${ORACLE_CCM_DSN}
+  user: ${ORACLE_CCM_USER}
+  password: ${ORACLE_CCM_PASSWORD}
+  thick_mode: false
+  tcp_connect_timeout: 15
+
+defaults:
+  # Confirme o nome exato do owner com 'discover --schemas' antes de carregar:
+  # o schema pode nao se chamar CCM mesmo o sistema se chamando assim.
+  schema: CCM
+  load_mode: full
+  batch_rows: 200000
+
+tables: []

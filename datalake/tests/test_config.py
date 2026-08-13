@@ -80,9 +80,9 @@ def test_tabela_duplicada():
         _source(tables=["X", "x"])
 
 
-def test_fonte_sem_tabelas():
-    with pytest.raises(ConfigError, match="nenhuma tabela"):
-        _source(tables=[])
+def test_fonte_sem_tabelas_e_aceita():
+    """Estado valido de quem ainda vai rodar discover (ver test_source_sem_tabelas)."""
+    assert _source(tables=[]).tables == ()
 
 
 def test_busca_de_tabela_ignora_caixa():

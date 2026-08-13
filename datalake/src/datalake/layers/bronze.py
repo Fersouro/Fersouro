@@ -224,6 +224,15 @@ def ingest_source(
     selected = (
         [source.table(name) for name in tables] if tables else list(source.tables)
     )
+    if not selected:
+        log.warning(
+            "[%s] nenhuma tabela configurada: fonte ignorada. "
+            "Rode 'datalake discover -s %s --schema <SCHEMA>' para descobrir o que existe.",
+            source.name,
+            source.name,
+        )
+        return []
+
     results: list[IngestResult] = []
 
     connector = get_connector(source, settings)

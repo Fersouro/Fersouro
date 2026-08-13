@@ -78,7 +78,14 @@ def cmd_init(args, settings: Settings) -> int:
 
 def cmd_sources(args, settings: Settings) -> int:
     rows = []
+    pendentes = []
     for source in _selected_sources(settings, args.source):
+        if not source.tables:
+            # Fonte recem-criada, ainda sem discover: precisa aparecer, senao
+            # some da listagem justamente quando o usuario procura por ela.
+            pendentes.append(source.name)
+            rows.append([source.name, source.type, "(sem tabelas)", "-", "-", "-"])
+            continue
         for table in source.tables:
             rows.append(
                 [
@@ -91,6 +98,13 @@ def cmd_sources(args, settings: Settings) -> int:
                 ]
             )
     print(_table(["FONTE", "TIPO", "TABELA", "MODO", "WATERMARK", "PK"], rows))
+    for nome in pendentes:
+        print(
+            f"\n'{nome}' ainda nao tem tabelas. Para descobri-las:"
+            f"\n  datalake discover -s {nome} --schemas"
+            f"\n  datalake discover -s {nome} --schema <SCHEMA> "
+            f"--write conf/sources/{nome}.yml --force"
+        )
     return EXIT_OK
 
 
