@@ -149,3 +149,30 @@ def test_lote_respeita_o_limite_da_clausula_in():
     lotes = _chunks([f"T{i}" for i in range(1201)])
     assert [len(l) for l in lotes] == [500, 500, 201]
     assert all(len(l) <= 1000 for l in lotes)  # limite do Oracle
+
+
+# ------------------------------------------------------------ varios filtros
+def test_normalize_filters_aceita_str_lista_e_vazio():
+    from datalake.discovery import normalize_filters
+
+    assert normalize_filters("vei%") == ["VEI%"]
+    assert normalize_filters(["vei%", " fat% "]) == ["VEI%", "FAT%"]
+    assert normalize_filters(None) == ["%"]
+    assert normalize_filters([]) == ["%"]
+    assert normalize_filters(["", "  "]) == ["%"]
+
+
+def test_clausula_like_combina_com_or():
+    from datalake.discovery import _like_clause
+
+    clausula, binds = _like_clause(["VEI%", "FAT%", "FIN%"])
+    assert clausula == "(table_name LIKE :p0 OR table_name LIKE :p1 OR table_name LIKE :p2)"
+    assert binds == {"p0": "VEI%", "p1": "FAT%", "p2": "FIN%"}
+
+
+def test_clausula_like_com_um_padrao_so():
+    from datalake.discovery import _like_clause
+
+    clausula, binds = _like_clause(["%"])
+    assert clausula == "(table_name LIKE :p0)"
+    assert binds == {"p0": "%"}

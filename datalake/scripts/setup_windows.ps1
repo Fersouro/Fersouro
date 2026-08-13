@@ -35,7 +35,7 @@ param(
     [string]$Schema      = "",
     [int]   $Top         = 0,    # 0 = sem limite
     [int]   $MinRows     = 0,
-    [string]$Filter      = "",
+    [string[]]$Filter    = @(),   # aceita varios: -Filter "VEI%","FAT%"
     [switch]$Write,
     [switch]$Force
 )
@@ -224,10 +224,10 @@ if ($Schema) {
     $argumentos = @("discover", "-s", $SourceName, "--schema", $Schema)
     if ($Top -gt 0)     { $argumentos += @("--top", $Top) }
     if ($MinRows -gt 0) { $argumentos += @("--min-rows", $MinRows) }
-    if ($Filter)        { $argumentos += @("--filter", $Filter) }
+    foreach ($padrao in $Filter) { $argumentos += @("--filter", $padrao) }
     if ($Write)         { $argumentos += @("--write", "conf/sources/$SourceName.yml", "--force") }
 
-    if (-not $Top -and -not $MinRows -and -not $Filter) {
+    if (-not $Top -and -not $MinRows -and $Filter.Count -eq 0) {
         Aviso "Sem --Top/--MinRows/--Filter: em schema grande isso pode demorar e gerar saida enorme."
     }
     & $venvPython -m datalake.cli @argumentos

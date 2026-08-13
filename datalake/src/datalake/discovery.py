@@ -109,20 +109,42 @@ def list_schemas(connector: Any) -> list[tuple[str, int]]:
         return [(row[0], int(row[1])) for row in cur.fetchall()]
 
 
+def normalize_filters(table_filter: str | list[str] | None) -> list[str]:
+    """Aceita um padrao, varios, ou nenhum -- sempre devolve lista em maiusculas."""
+    if not table_filter:
+        return ["%"]
+    if isinstance(table_filter, str):
+        table_filter = [table_filter]
+    padroes = [p.strip().upper() for p in table_filter if p and p.strip()]
+    return padroes or ["%"]
+
+
+def _like_clause(padroes: list[str]) -> tuple[str, dict[str, str]]:
+    """Monta '(table_name LIKE :p0 OR ...)' com os binds correspondentes."""
+    binds = {f"p{i}": padrao for i, padrao in enumerate(padroes)}
+    condicao = " OR ".join(f"table_name LIKE :{k}" for k in binds)
+    return f"({condicao})", binds
+
+
 def list_tables(
-    connector: Any, owner: str, table_filter: str | None = None
+    connector: Any, owner: str, table_filter: str | list[str] | None = None
 ) -> list[TableInfo]:
-    """So os nomes e o volume estimado -- consulta barata, sem colunas nem PK."""
+    """So os nomes e o volume estimado -- consulta barata, sem colunas nem PK.
+
+    Varios padroes sao combinados com OR: um sistema modular guarda cada
+    assunto sob um prefixo, e quase sempre se quer olhar alguns juntos.
+    """
     connector.open()
+    clausula, binds = _like_clause(normalize_filters(table_filter))
     with connector._con.cursor() as cur:
         cur.execute(
-            """
+            f"""
             SELECT table_name, num_rows
               FROM all_tables
-             WHERE owner = :owner AND table_name LIKE :padrao
+             WHERE owner = :owner AND {clausula}
              ORDER BY table_name
             """,
-            {"owner": owner.upper(), "padrao": (table_filter or "%").upper()},
+            {"owner": owner.upper(), **binds},
         )
         return [
             TableInfo(name=name, num_rows=None if rows is None else int(rows))
@@ -153,7 +175,7 @@ def _chunks(valores: list[str], tamanho: int = 500) -> list[list[str]]:
 def inspect_schema(
     connector: Any,
     owner: str,
-    table_filter: str | None = None,
+    table_filter: str | list[str] | None = None,
     top: int | None = None,
     min_rows: int | None = None,
 ) -> list[TableInfo]:
@@ -166,9 +188,10 @@ def inspect_schema(
     owner = owner.upper()
     tables = list_tables(connector, owner, table_filter)
     if not tables:
+        padroes = ", ".join(normalize_filters(table_filter))
         raise ConnectorError(
             f"Nenhuma tabela encontrada em '{owner}'"
-            + (f" com o filtro '{table_filter}'." if table_filter else ".")
+            + (f" com o(s) filtro(s) {padroes}." if table_filter else ".")
             + " Confira o nome do schema com 'datalake discover --schemas'."
         )
 
