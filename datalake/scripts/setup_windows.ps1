@@ -37,6 +37,9 @@ param(
     [string]$Peek        = "",   # espia as primeiras linhas de um objeto
     [string]$Sql         = "",   # consulta de leitura direto na origem
     [switch]$Run,                # carrega: bronze -> silver -> gold
+    # Onde os dados ficam. Fora da pasta do projeto de proposito: o projeto e
+    # descartavel (-Update apaga e rebaixa), os dados nao.
+    [string]$LakeRoot    = "",
     [int]   $PeekLimit   = 10,
     [int]   $Top         = 0,    # 0 = sem limite
     [int]   $MinRows     = 0,
@@ -185,11 +188,23 @@ Ok "dependencias instaladas"
 # -------------------------------------------------------------------- 5. .env
 Etapa 5 "Configurando as credenciais (.env)"
 $envPath = Join-Path $raiz ".env"
+if ($LakeRoot) {
+    $lakeRootFinal = $LakeRoot
+} else {
+    # Ao lado do script, nao dentro do projeto: assim -Update nao leva os dados.
+    $lakeRootFinal = Join-Path $PSScriptRoot "datalake-dados"
+}
+New-Item -ItemType Directory -Force -Path $lakeRootFinal | Out-Null
+Ok "dados do lake em $lakeRootFinal"
 $prefixo = $SourceName.ToUpper()
 $jaTem = (Test-Path $envPath) -and (Select-String -Path $envPath -Pattern "^ORACLE_${prefixo}_DSN=" -Quiet)
 
 if ($jaTem -and -not $Force) {
     Ok ".env ja tem ORACLE_${prefixo}_*; mantido (use -Force para refazer)"
+    if (-not (Select-String -Path $envPath -Pattern "^DATALAKE_ROOT=" -Quiet)) {
+        Add-Content -Path $envPath -Value "DATALAKE_ROOT=$lakeRootFinal" -Encoding ascii
+        Ok "DATALAKE_ROOT acrescentado ao .env existente"
+    }
 } else {
     $senhaSegura = Read-Host "    Senha de $User" -AsSecureString
     $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($senhaSegura)
@@ -203,7 +218,8 @@ if ($jaTem -and -not $Force) {
     $linhas = @(
         "ORACLE_${prefixo}_DSN=${OracleHost}:${Port}/${ServiceName}",
         "ORACLE_${prefixo}_USER=$User",
-        "ORACLE_${prefixo}_PASSWORD=$senha"
+        "ORACLE_${prefixo}_PASSWORD=$senha",
+        "DATALAKE_ROOT=$lakeRootFinal"
     )
     # ASCII de proposito: com '>' ou Out-File o PowerShell 5.1 grava UTF-16, e
     # a leitura do .env sai como lixo -- o erro que aparece depois fala em
@@ -235,7 +251,7 @@ if ($Run) {
     Write-Host ""
     if ($codigo -eq 0) {
         Write-Host "=== Carga concluida ===" -ForegroundColor Green
-        Write-Host "Os dados estao em: $(Join-Path $raiz 'data\gold')"
+        Write-Host "Os dados estao em: $(Join-Path $lakeRootFinal 'gold')"
         Write-Host "Aponte o Power BI para essa pasta (conector Parquet)."
     } else {
         Write-Host "=== Carga terminou com falhas (veja acima) ===" -ForegroundColor Yellow
