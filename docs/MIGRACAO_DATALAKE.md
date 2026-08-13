@@ -225,6 +225,10 @@ silêncio, que é pior do que falhar.
 
 **Esse é o trabalho residual real da migração**, e não some com automação.
 
+O que some é a dúvida sobre ter acertado: `conferir_views.py` (fase 4) compara
+o resultado da view traduzida com o que a original respondia, e acusa a
+diferença. Ele não traduz por você — só não deixa um erro passar calado.
+
 ---
 
 ## Fase 4 — Verificação
@@ -233,10 +237,57 @@ silêncio, que é pior do que falhar.
 
 1. **Contagem** — número de objetos na origem e no destino batem?
 2. **Checksum** — os hashes CRC32C conferem, objeto a objeto?
-3. **Views** — os 11 arquivos `.sql` existem e não estão vazios?
+3. **Views** — as 11 views traduzidas respondem o mesmo que respondiam no
+   BigQuery?
 
 O item 3 é específico deste datalake e não aparece em checklist genérico
 de migração.
+
+### Conferir as views de verdade
+
+Checar se os arquivos `.sql` existem e não estão vazios prova que o download
+aconteceu, não que a tradução está certa — e a tradução é justamente onde o
+erro não aparece. `COALESCE(x/NULLIF(y,0), 0)` parece um conserto razoável
+para `SAFE_DIVIDE` e troca NULL por zero em toda média que a view alimenta.
+`PARSE_DATE` com `%m/%d` no lugar de `%d/%m` desloca datas sem falhar em
+nenhuma linha, desde que dia e mês sejam ambos ≤ 12.
+
+`conferir_views.py` compara o conteúdo dos dois lados. Para cada view ele
+calcula um perfil — contagem de linhas e, por coluna, não-nulos, distintos,
+mínimo, máximo e soma — e confronta perfil com perfil:
+
+```bash
+# Na origem, ENQUANTO o BigQuery ainda existe:
+python scripts/conferir_views.py bigquery --dataset gold --saida perfil-bq.json
+
+# No destino, depois de carregar e traduzir:
+python scripts/conferir_views.py duckdb D:/datalake/datalake.duckdb \
+    --comparar-com perfil-bq.json
+```
+
+Sai com código 1 e lista cada divergência: qual view, qual coluna, qual
+métrica, os dois valores. Os dois erros do parágrafo acima aparecem como
+`nao_nulos` e `minimo` fora do lugar.
+
+Não é igualdade linha a linha, e não promete ser — é o conjunto de agregados
+que muda quando a semântica muda, que é o que se quer pegar. Colunas
+`ARRAY`/`STRUCT` só são contadas, porque não ordenam.
+
+> **O perfil da origem precisa ser coletado antes da fase 5.** Depois que o
+> projeto for excluído não existe mais contra o que comparar: o perfil é tão
+> irreproduzível quanto as próprias views, e pela mesma razão. Guarde o
+> `perfil-bq.json` junto com os `.sql`, fora do projeto GCP.
+
+Antes de rodar na origem, `--estimar` faz um dry run e informa quantos bytes
+cada perfil leria, sem executar nem cobrar — as views do `gold` cobrem as 848
+tabelas do bronze, então vale olhar a conta antes.
+
+O verificador tem teste próprio, que constrói uma tradução errada de
+propósito e exige que ela seja acusada:
+
+```bash
+python tests/teste_conferir_views.py
+```
 
 ---
 
@@ -271,9 +322,11 @@ Nesta ordem:
 - [ ] Localizado onde roda cada principal do relatório
 - [ ] Fase 3 — bucket copiado
 - [ ] Fase 3 — 850 tabelas exportadas em Parquet/Avro
+- [ ] **Perfil das views coletado no BigQuery** (`conferir_views.py bigquery`)
 - [ ] Fase 4 — contagem, checksums e views conferidos
 - [ ] DuckDB carregado e conferido contra o manifesto
 - [ ] 11 views traduzidas do dialeto BigQuery
+- [ ] Views traduzidas conferidas contra o perfil da origem
 - [ ] Fase 5 — escritas congeladas, revalidado
 - [ ] Fase 6 — faturamento desativado, período de espera cumprido
 - [ ] Projeto excluído
@@ -293,6 +346,7 @@ Nesta ordem:
 | `carregar_duckdb.py` | Carrega o Parquet no DuckDB e confere contagens | Só local |
 | `list_buckets.py` | Lista buckets via service account | Somente leitura |
 | `mapear_dependencias.py` | Quem lê, quem escreve e quanto dialeto falta traduzir | Somente leitura |
+| `conferir_views.py` | Perfila as views nos dois lados e confronta | Somente leitura |
 | `gcp_credenciais.py` | Carrega a credencial (módulo, não executável) | — |
 
 Só o `exportar_bigquery.sh` escreve no GCP, e apenas criando arquivos novos

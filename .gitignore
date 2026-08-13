@@ -11,3 +11,7 @@ gcp-key*.json
 # logica de negocio do datalake — e este repositorio e o perfil publico.
 metadados-bq-*/
 dependencias-*/
+
+# Perfis das views: carregam minimo, maximo e soma de cada coluna, ou seja,
+# valores reais do negocio. Nao sao "so metadados".
+perfil-*.json
