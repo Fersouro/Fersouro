@@ -21,7 +21,12 @@ import sys
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(RAIZ, "scripts"))
 
-from mapear_dependencias import CONDICAO_ESCRITA, dialeto, montar_relatorio  # noqa: E402
+from mapear_dependencias import (  # noqa: E402
+    CONDICAO_ESCRITA,
+    dialeto,
+    maior_janela_ociosa,
+    montar_relatorio,
+)
 
 COMPUTE = "370559798304-compute@developer.gserviceaccount.com"
 PORTAL = "portal-relatorios@tterrasul-datalake.iam.gserviceaccount.com"
@@ -116,6 +121,15 @@ def main() -> int:
     checa("Pico as 02h" in r, "identifica o horario de pico")
     checa("06h" in trecho(r, "Horas sem nenhuma escrita", 300),
           "lista as horas ociosas")
+
+    # O dia da a volta: 21h-04h sao 8 horas seguidas, nao duas janelas.
+    checa(maior_janela_ociosa({5, 8, 9, 10, 11, 14, 15, 16, 17, 19, 20}) == (21, 8),
+          "acha a janela que cruza a meia-noite (caso real do projeto)")
+    checa(maior_janela_ociosa(set(range(24))) is None,
+          "projeto que escreve o dia todo nao tem janela")
+    checa(maior_janela_ociosa(set()) == (0, 24), "projeto parado: dia inteiro")
+    checa(maior_janela_ociosa({0}) == (1, 23), "uma unica hora ocupada")
+    checa(maior_janela_ociosa({0, 12})[1] == 11, "escolhe a maior das duas metades")
 
     print("\n== caso vazio nao quebra ==")
     v = montar_relatorio(VAZIO, "tterrasul-datalake", 30)

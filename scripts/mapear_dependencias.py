@@ -54,10 +54,16 @@ REGIAO_VALIDA = re.compile(r"^[a-z0-9-]+$")
 # INFORMATION_SCHEMA guarda 180 dias de historico; pedir mais nao traz nada.
 DIAS_MAX = 180
 
-# O que conta como escrita. Identificado pelo tipo do job, e nao por ter
-# `destination_table` preenchido: o BigQuery deixa esse campo nulo em jobs
-# LOAD, entao filtrar por ele esconde exatamente o pipeline que alimenta o
-# bronze — o mais importante de achar.
+# O que conta como escrita, identificado pelo tipo do job.
+#
+# A versao anterior filtrava por `destination_table IS NOT NULL AND
+# destination_table.dataset_id NOT LIKE '_%'`, querendo descartar os datasets
+# temporarios que comecam com underscore. Mas `_` e curinga de um caractere em
+# LIKE: `'_%'` casa com qualquer nome nao-vazio, e o NOT LIKE descartava todas
+# as linhas. O relatorio anunciava "nenhuma escrita registrada" num projeto que
+# carrega 848 tabelas por dia. Para excluir o underscore literal seria preciso
+# escapar (`NOT LIKE '\\_%'`) — mas classificar pelo tipo do job e mais direto
+# e nao depende de convencao de nome.
 DDL_E_DML = (
     "'INSERT','UPDATE','DELETE','MERGE','TRUNCATE_TABLE',"
     "'CREATE_TABLE','CREATE_TABLE_AS_SELECT','CREATE_OR_REPLACE_TABLE',"
@@ -140,12 +146,10 @@ def escritas(client, regiao: str, dias: int):
     linhas continuar avancando, o alvo nao esta estatico e a verificacao da
     fase 4 nao vale.
 
-    O destino sai de `destination_table`, que o BigQuery **nao preenche para
-    jobs LOAD**. Por isso a escrita e identificada pelo tipo do job, nunca por
-    ter destino registrado: a primeira versao filtrava por
-    `destination_table IS NOT NULL` e informava "nenhuma escrita" num projeto
-    com milhares de LOADs por semana — um falso negativo justamente na
-    pergunta de que depende congelar o alvo.
+    O destino sai de `destination_table`, que costuma vir preenchido — mas a
+    escrita e classificada pelo tipo do job, nao pela presenca do destino. Um
+    job pode escrever sem que o historico registre onde, e nesse caso o certo
+    e reportar a escrita com o destino desconhecido, jamais omitir a linha.
     """
     sql = f"""
     SELECT
@@ -223,6 +227,33 @@ def _tabela_md(cabecalho: list[str], linhas: list[list], vazio: str) -> list[str
     out += ["| " + " | ".join(str(c) for c in linha) + " |" for linha in linhas]
     out.append("")
     return out
+
+
+def maior_janela_ociosa(com_escrita: set[int]):
+    """Maior sequencia de horas seguidas sem escrita. Devolve (inicio, duracao).
+
+    O dia da a volta, entao 21h-04h e uma janela de 8 horas, nao duas de 3 e 5.
+    Listar as horas ociosas soltas nao responde a pergunta que importa — "a
+    partir de que hora eu tenho quanto tempo livre" — e uma exportacao de 850
+    tabelas leva horas, nao minutos.
+    """
+    ociosas = [h for h in range(24) if h not in com_escrita]
+    if not ociosas:
+        return None
+    if len(ociosas) == 24:
+        return (0, 24)
+
+    melhor = (0, 0)
+    for inicio in ociosas:
+        # So e comeco de janela se a hora anterior tiver escrita.
+        if (inicio - 1) % 24 not in com_escrita:
+            continue
+        duracao = 0
+        while (inicio + duracao) % 24 not in com_escrita:
+            duracao += 1
+        if duracao > melhor[1]:
+            melhor = (inicio, duracao)
+    return melhor
 
 
 def _dia(valor) -> str:
@@ -363,16 +394,28 @@ def montar_relatorio(dados: dict, projeto: str, dias: int) -> str:
             [[f'{r["hora"]:02d}h', f'{r["jobs"]:,}'] for r in horas],
             "",
         )
-        ln += [
-            f'Pico as {pico["hora"]:02d}h ({pico["jobs"]:,} jobs).',
-            "",
-            ("Horas sem nenhuma escrita na janela: "
-             + ", ".join(f"{h:02d}h" for h in ociosas) + "."
-             if ociosas else
-             "Nao houve nenhuma hora do dia sem escrita — nao existe janela "
-             "ociosa natural, e a exportacao exige parar a automacao antes."),
-            "",
-        ]
+        ln += [f'Pico as {pico["hora"]:02d}h ({pico["jobs"]:,} jobs).', ""]
+
+        janela = maior_janela_ociosa({r["hora"] for r in horas})
+        if janela is None:
+            ln += [
+                "**Nao existe hora do dia sem escrita.** Nao ha janela natural: "
+                "a exportacao exige parar a automacao antes, nao esperar uma "
+                "brecha que nao vem.",
+                "",
+            ]
+        else:
+            inicio, duracao = janela
+            fim = (inicio + duracao) % 24
+            ln += [
+                f"**Maior janela sem escrita: {inicio:02d}h -> {fim:02d}h "
+                f"({duracao}h seguidas).** E por ai que a exportacao comeca se "
+                "voce nao for parar o pipeline antes.",
+                "",
+                "Horas sem nenhuma escrita: "
+                + ", ".join(f"{h:02d}h" for h in ociosas) + ".",
+                "",
+            ]
     else:
         ln += ["_Sem escritas registradas; nao ha janela a evitar._", ""]
 
