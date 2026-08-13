@@ -174,10 +174,11 @@ def cmd_discover(args, settings: Settings) -> int:
         )
         print(
             _table(
-                ["TABELA", "LINHAS", "COLS", "PK", "WATERMARK", "MODO", "OBS"],
+                ["OBJETO", "TIPO", "LINHAS", "COLS", "PK", "WATERMARK", "MODO", "OBS"],
                 [
                     [
                         t.name,
+                        "view" if t.is_view else "tabela",
                         "?" if t.num_rows is None else f"{t.num_rows:,}",
                         len(t.columns),
                         ",".join(t.primary_key) or "-",

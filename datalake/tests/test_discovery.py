@@ -222,7 +222,9 @@ def test_filtro_vazio_mostra_nomes_reais_do_schema():
     from datalake.discovery import inspect_schema
     import pytest as _pytest
 
-    conector = _ConectorFake([("TB_MOVIMENTO", 900000), ("TB_CLIENTE", 1200)])
+    conector = _ConectorFake(
+        [("TB_MOVIMENTO", "TABLE", 900000), ("TB_CLIENTE", "TABLE", 1200)]
+    )
     with _pytest.raises(ConnectorError) as erro:
         inspect_schema(conector, "CNP", table_filter=["VEI%", "FAT%"])
 
@@ -306,3 +308,32 @@ def test_find_com_curinga_explicito_e_respeitado():
     conector = _ConectorBusca(objetos=[])
     find_objects(conector, "VEI%")
     assert conector.cursor_fake.ultimo_bind["padrao"] == "VEI%"
+
+
+# --------------------------------------------------------- views na descoberta
+def test_view_e_marcada_e_pede_pk_manual():
+    tabela = _tabela(nome="VEI_VEI_VW", linhas=None, pk=())
+    tabela.object_type = "VIEW"
+    assert tabela.is_view
+    assert "view" in tabela.observacao
+    assert "primary_key" in tabela.observacao
+
+
+def test_yaml_marca_a_origem_view_no_comentario():
+    tabela = _tabela(nome="VEI_VEI", linhas=None, pk=("ID",))
+    tabela.object_type = "VIEW"
+    texto = to_yaml("ccm", "CNP", [tabela])
+    assert "[view]" in texto
+    assert "VEI_VEI" in texto
+
+
+def test_tabela_comum_nao_ganha_marca_de_view():
+    texto = to_yaml("ccm", "CNP", [_tabela(nome="VEI_VEI")])
+    assert "[view]" not in texto
+
+
+def test_clausula_like_aceita_outra_coluna():
+    from datalake.discovery import _like_clause
+
+    clausula, _ = _like_clause(["VEI%"], "o.object_name")
+    assert clausula == "(o.object_name LIKE :p0)"

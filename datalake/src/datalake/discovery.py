@@ -62,6 +62,11 @@ class TableInfo:
     num_rows: int | None
     columns: list[ColumnInfo] = field(default_factory=list)
     primary_key: list[str] = field(default_factory=list)
+    object_type: str = "TABLE"
+
+    @property
+    def is_view(self) -> bool:
+        return self.object_type in ("VIEW", "MATERIALIZED VIEW")
 
     @property
     def watermark_candidates(self) -> list[str]:
@@ -87,6 +92,9 @@ class TableInfo:
 
     @property
     def observacao(self) -> str:
+        if self.is_view and not self.primary_key:
+            # View nao declara PK no dicionario, mesmo tendo uma chave logica.
+            return "view: sem PK no dicionario, informe primary_key na mao"
         if not self.primary_key:
             return "sem PK declarada: informe primary_key na mao"
         if not self.suggested_watermark:
@@ -187,36 +195,56 @@ def normalize_filters(table_filter: str | list[str] | None) -> list[str]:
     return padroes or ["%"]
 
 
-def _like_clause(padroes: list[str]) -> tuple[str, dict[str, str]]:
-    """Monta '(table_name LIKE :p0 OR ...)' com os binds correspondentes."""
+def _like_clause(
+    padroes: list[str], column: str = "table_name"
+) -> tuple[str, dict[str, str]]:
+    """Monta '(coluna LIKE :p0 OR ...)' com os binds correspondentes."""
     binds = {f"p{i}": padrao for i, padrao in enumerate(padroes)}
-    condicao = " OR ".join(f"table_name LIKE :{k}" for k in binds)
+    condicao = " OR ".join(f"{column} LIKE :{k}" for k in binds)
     return f"({condicao})", binds
 
 
 def list_tables(
-    connector: Any, owner: str, table_filter: str | list[str] | None = None
+    connector: Any,
+    owner: str,
+    table_filter: str | list[str] | None = None,
+    include_views: bool = True,
 ) -> list[TableInfo]:
-    """So os nomes e o volume estimado -- consulta barata, sem colunas nem PK.
+    """Nomes, tipo e volume estimado -- consulta barata, sem colunas nem PK.
+
+    Consulta ``all_objects``, e nao ``all_tables``, porque um ERP costuma expor
+    boa parte dos dados por view: filtrar so por tabela deixaria esses objetos
+    invisiveis para a configuracao, mesmo sendo perfeitamente carregaveis.
 
     Varios padroes sao combinados com OR: um sistema modular guarda cada
     assunto sob um prefixo, e quase sempre se quer olhar alguns juntos.
     """
     connector.open()
-    clausula, binds = _like_clause(normalize_filters(table_filter))
+    clausula, binds = _like_clause(normalize_filters(table_filter), "o.object_name")
+    tipos = ("TABLE", "VIEW", "MATERIALIZED VIEW") if include_views else ("TABLE",)
+    lista_tipos = ", ".join(f"'{t}'" for t in tipos)
+
     with connector._con.cursor() as cur:
         cur.execute(
             f"""
-            SELECT table_name, num_rows
-              FROM all_tables
-             WHERE owner = :owner AND {clausula}
-             ORDER BY table_name
+            SELECT o.object_name, o.object_type, t.num_rows
+              FROM all_objects o
+              LEFT JOIN all_tables t
+                ON t.owner = o.owner AND t.table_name = o.object_name
+             WHERE o.owner = :owner
+               AND o.object_type IN ({lista_tipos})
+               AND {clausula}
+             ORDER BY o.object_name
             """,
             {"owner": owner.upper(), **binds},
         )
         return [
-            TableInfo(name=name, num_rows=None if rows is None else int(rows))
-            for name, rows in cur.fetchall()
+            TableInfo(
+                name=nome,
+                num_rows=None if linhas is None else int(linhas),
+                object_type=tipo,
+            )
+            for nome, tipo, linhas in cur.fetchall()
         ]
 
 
@@ -355,7 +383,8 @@ def to_yaml(source_name: str, owner: str, tables: list[TableInfo]) -> str:
 
     for table in sorted(tables, key=lambda t: t.name):
         volume = "desconhecido" if table.num_rows is None else f"{table.num_rows:,} linhas"
-        linhas.append(f"  # {volume}")
+        tipo = f" [{table.object_type.lower()}]" if table.is_view else ""
+        linhas.append(f"  # {volume}{tipo}")
         linhas.append(f"  - name: {table.name}")
         linhas.append(f"    load_mode: {table.suggested_load_mode}")
 
