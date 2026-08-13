@@ -201,11 +201,15 @@ class OracleConnector(Connector):
                 if "DPI-1072" not in str(exc) and "already initialized" not in str(exc).lower():
                     raise ConnectorError(f"Falha ao iniciar o Oracle Client: {exc}") from exc
 
+        timeout = int(conn.get("tcp_connect_timeout") or 15)
         try:
-            self._con = oracledb.connect(user=user, password=password, dsn=dsn)
+            self._con = oracledb.connect(
+                user=user, password=password, dsn=dsn, tcp_connect_timeout=timeout
+            )
         except Exception as exc:  # noqa: BLE001
             raise ConnectorError(
                 f"Nao foi possivel conectar em '{self.source.name}' ({dsn}): {exc}"
+                + _connection_hint(str(exc), dsn, timeout)
             ) from exc
         log.info("Conectado em %s (%s)", self.source.name, dsn)
 
@@ -349,6 +353,37 @@ def _lob_as_value(oracledb: Any):
         return None
 
     return handler
+
+
+def _connection_hint(error: str, dsn: str, timeout: int) -> str:
+    """Traduz os erros de conexao mais comuns em uma proxima acao concreta."""
+    host = dsn.split(":")[0]
+    privado = host.startswith(("10.", "192.168.")) or host.startswith("172.")
+    if "DPY-6005" in error or "timed out" in error.lower() or "refused" in error.lower():
+        rede = (
+            f"\n  O host {host} e um endereco de rede interna: so responde de dentro "
+            f"dela (rede local, VPN ou uma maquina na mesma VCN)."
+            if privado
+            else ""
+        )
+        return (
+            f"\n\nA conexao TCP nao chegou ao banco em {timeout}s -- isso acontece antes "
+            f"de qualquer validacao de usuario e senha.{rede}"
+            f"\n  Verifique nesta ordem:"
+            f"\n    1. rota ate o host:  ping {host}"
+            f"\n    2. porta aberta:     telnet {host} 1521  (ou Test-NetConnection no Windows)"
+            f"\n    3. listener no ar:   lsnrctl status  (no servidor)"
+        )
+    if "ORA-01017" in error:
+        return "\n\nUsuario ou senha invalidos. Cuidado com senha que precisa de aspas no .env."
+    if "ORA-12514" in error:
+        return (
+            "\n\nO listener respondeu mas nao conhece esse service_name. Confira o nome "
+            "com 'lsnrctl services' no servidor -- e service_name, nao SID."
+        )
+    if "ORA-28000" in error or "ORA-28001" in error:
+        return "\n\nConta bloqueada ou senha expirada. Fale com o DBA."
+    return ""
 
 
 def _safe_decimal(value: Any) -> Any:

@@ -10,6 +10,8 @@ connection:
   # Use thick_mode: true apenas para tnsnames.ora, wallet ou charset legado.
   thick_mode: false
   # lib_dir: ${ORACLE_CLIENT_LIB_DIR}
+  # Segundos de espera pelo handshake TCP antes de desistir.
+  tcp_connect_timeout: 15
 
 # Valores herdados por todas as tabelas que nao os declararem.
 defaults:

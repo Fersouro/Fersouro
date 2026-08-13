@@ -3,6 +3,7 @@
     datalake init                      cria a estrutura de diretorios e o controle
     datalake sources                   lista fontes e tabelas configuradas
     datalake test-connection           testa a conexao com a origem
+    datalake discover                  le o dicionario de dados e propõe o YAML
     datalake ingest                    origem  -> bronze
     datalake silver                    bronze  -> silver
     datalake gold                      silver  -> gold
@@ -21,6 +22,7 @@ from pathlib import Path
 from typing import Sequence
 
 from .config import ConfigError, Settings, load_settings
+from .connectors.base import ConnectorError
 from .logging_conf import get_logger, setup_logging
 from .state.control import ControlDB, new_run_id
 
@@ -107,6 +109,68 @@ def cmd_test_connection(args, settings: Settings) -> int:
         finally:
             connector.close()
     return status
+
+
+def cmd_discover(args, settings: Settings) -> int:
+    """Le o dicionario de dados da origem e propõe a configuracao das tabelas."""
+    from .connectors.registry import get_connector
+    from .discovery import inspect_schema, list_schemas, to_yaml
+
+    source = settings.source(args.source)
+    if source.type != "oracle":
+        print(f"'discover' so funciona em fontes Oracle (a fonte '{source.name}' e "
+              f"'{source.type}').", file=sys.stderr)
+        return EXIT_CONFIG
+
+    connector = get_connector(source, settings)
+    try:
+        connector.open()
+        print(connector.describe())
+        print()
+
+        if args.schemas or not args.schema:
+            schemas = list_schemas(connector)
+            print(_table(["SCHEMA", "TABELAS"], schemas))
+            if not args.schema:
+                print("\nEscolha um e rode: datalake discover -s "
+                      f"{source.name} --schema NOME")
+            return EXIT_OK
+
+        tables = inspect_schema(connector, args.schema, args.filter)
+        print(
+            _table(
+                ["TABELA", "LINHAS", "COLS", "PK", "WATERMARK", "MODO", "OBS"],
+                [
+                    [
+                        t.name,
+                        "?" if t.num_rows is None else f"{t.num_rows:,}",
+                        len(t.columns),
+                        ",".join(t.primary_key) or "-",
+                        t.suggested_watermark or "-",
+                        t.suggested_load_mode,
+                        t.observacao,
+                    ]
+                    for t in sorted(tables, key=lambda x: x.name)
+                ],
+            )
+        )
+        print(f"\n{len(tables)} tabela(s) em {args.schema.upper()}")
+
+        if args.write:
+            destino = Path(args.write)
+            if not destino.is_absolute():
+                destino = settings.project_root / destino
+            if destino.exists() and not args.force:
+                print(f"\n{destino} ja existe. Use --force para sobrescrever.",
+                      file=sys.stderr)
+                return EXIT_FAILED
+            destino.parent.mkdir(parents=True, exist_ok=True)
+            destino.write_text(to_yaml(source.name, args.schema, tables), encoding="utf-8")
+            print(f"\nConfiguracao gravada em {destino}")
+            print("Revise as sugestoes de load_mode e watermark antes de rodar o ingest.")
+        return EXIT_OK
+    finally:
+        connector.close()
 
 
 def cmd_ingest(args, settings: Settings) -> int:
@@ -368,6 +432,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-s", "--source")
     p.set_defaults(func=cmd_test_connection)
 
+    p = sub.add_parser("discover", help="le o dicionario de dados e propõe a configuracao")
+    p.add_argument("-s", "--source", required=True)
+    p.add_argument("--schema", help="schema (owner) a inspecionar")
+    p.add_argument("--schemas", action="store_true", help="so lista os schemas visiveis")
+    p.add_argument("--filter", help="filtro LIKE no nome da tabela, ex.: 'PED%%'")
+    p.add_argument("--write", help="grava o YAML gerado no caminho informado")
+    p.add_argument("--force", action="store_true", help="sobrescreve o arquivo existente")
+    p.set_defaults(func=cmd_discover)
+
     p = sub.add_parser("ingest", help="origem -> bronze")
     add_source_args(p)
     p.add_argument("--full", action="store_true", help="ignora o watermark e recarrega tudo")
@@ -433,6 +506,10 @@ def main(argv: list[str] | None = None) -> int:
     except ConfigError as exc:
         log.error("Erro de configuracao: %s", exc)
         return EXIT_CONFIG
+    except ConnectorError as exc:
+        # Falha de conexao ja vem com diagnostico pronto; o traceback so atrapalha.
+        print(f"\n{exc}", file=sys.stderr)
+        return EXIT_FAILED
     except KeyboardInterrupt:
         log.warning("Interrompido pelo usuario")
         return EXIT_FAILED

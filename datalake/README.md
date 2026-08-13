@@ -76,6 +76,42 @@ python3 -m datalake.cli run -s oracle_erp
 Na primeira execução não existe watermark, então toda tabela vem inteira. Das
 próximas em diante só entra o que mudou.
 
+### Não sabe quais tabelas configurar? Deixe o `discover` montar o YAML
+
+```bash
+# 1. quais schemas o usuário enxerga
+python3 -m datalake.cli discover -s oracle_erp --schemas
+
+# 2. o que existe dentro de um schema (linhas, PK, candidatas a watermark)
+python3 -m datalake.cli discover -s oracle_erp --schema ERP
+
+# 3. gera a configuração já preenchida
+python3 -m datalake.cli discover -s oracle_erp --schema ERP \
+        --filter 'PED%' --write conf/sources/oracle_erp.yml --force
+```
+
+O `discover` lê `all_tables`, `all_tab_columns` e `all_constraints` e propõe,
+para cada tabela: chave primária (a declarada no banco), coluna de watermark (por
+nome — `DT_ATUALIZACAO`, `UPDATED_AT`, ...) e modo de carga (`full` até ~200 mil
+linhas, `incremental` acima disso quando há PK e coluna de data).
+
+**São sugestões, baseadas em nome e volume — não em regra de negócio.** Revise
+antes de rodar o `ingest`, principalmente as tabelas que saírem marcadas como
+"sem PK declarada".
+
+### Quando a conexão falha
+
+O erro já vem com o diagnóstico e a próxima ação. Os três casos comuns:
+
+| Sintoma | Causa |
+|---|---|
+| `DPY-6005` / timeout | Não há rota TCP até o host — rede, VPN ou firewall. Acontece **antes** de validar usuário e senha. |
+| `ORA-12514` | O listener respondeu mas não conhece o `service_name` (confira com `lsnrctl services` — é service_name, não SID). |
+| `ORA-01017` | Usuário ou senha inválidos. |
+
+O timeout de conexão é 15s por padrão; ajuste com `tcp_connect_timeout` no bloco
+`connection` da fonte.
+
 ### thin vs thick
 
 O modo padrão (**thin**) fala o protocolo Oracle direto em Python — não precisa
@@ -91,6 +127,7 @@ instalar o Instant Client. Use `thick_mode: true` só se precisar de
 | `init` | Cria os diretórios e o banco de controle |
 | `sources` | Lista fontes e tabelas configuradas |
 | `test-connection` | Testa a conexão e mostra versão/banco/usuário |
+| `discover` | Lê o dicionário de dados e gera o YAML da fonte |
 | `ingest` | Origem → bronze (`--full` ignora o watermark, `--dry-run` só conta) |
 | `silver` | Bronze → silver |
 | `gold` | Silver → gold (`-m modelo` roda um só) |
