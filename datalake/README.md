@@ -76,6 +76,28 @@ python3 -m datalake.cli run -s oracle_erp
 Na primeira execução não existe watermark, então toda tabela vem inteira. Das
 próximas em diante só entra o que mudou.
 
+### No Windows: um comando só
+
+`scripts/setup_windows.ps1` faz tudo — confere o Python, testa a rota TCP até o
+banco, cria o ambiente virtual, instala, monta o `.env` (pedindo a senha na hora,
+sem gravá-la em lugar nenhum além do `.env`) e roda o `discover`:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\setup_windows.ps1
+```
+
+Ele para na primeira etapa que falhar dizendo o que fazer, e grava tudo em
+`saida-datalake.txt`. Já sabendo o schema:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\setup_windows.ps1 -Schema CCM -Write
+```
+
+Duas armadilhas do PowerShell que o script já contorna: ele chama o Python do
+venv direto em vez de usar `Activate.ps1` (que esbarra em política de execução),
+e grava o `.env` em ASCII — com `>` ou `Out-File`, o PowerShell 5.1 grava UTF-16
+e a leitura do `.env` sai como lixo.
+
 ### Não sabe quais tabelas configurar? Deixe o `discover` montar o YAML
 
 ```bash
