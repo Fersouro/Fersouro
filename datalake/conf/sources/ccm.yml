@@ -98,3 +98,17 @@ tables:
     load_mode: full
     quality:
       row_count_min: 1
+
+  # --------------------------------------------------- ordens de servico
+  # Atendimento: e ele que carrega o DEPARTAMENTO da OS (410 = funilaria)
+  # e o nome do contato, que nem sempre esta no cadastro de cliente.
+  - name: OFI_ATENDIMENTO
+    load_mode: full
+    quality:
+      row_count_min: 1
+
+  # Fontes pagadoras -- seguradora, garantia, cliente. Cadastro pequeno.
+  - name: FAT_FONTE
+    load_mode: full
+    quality:
+      row_count_min: 1
