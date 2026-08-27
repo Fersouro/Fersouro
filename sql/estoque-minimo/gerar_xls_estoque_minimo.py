@@ -18,7 +18,10 @@ import argparse
 import csv
 import datetime as dt
 import os
+import shutil
 import sys
+import zipfile
+from xml.etree import ElementTree as ET
 
 from openpyxl import Workbook
 from openpyxl.comments import Comment
@@ -222,6 +225,32 @@ def montar(itens, revenda, fator, data_ref):
         ws.merge_cells(start_row=nr + 1 + j, start_column=1, end_row=nr + 1 + j, end_column=9)
         ws.row_dimensions[nr + 1 + j].height = 26
 
+    # Valores em cache das fórmulas (ver _gravar_cache_formulas). O Excel/Calc
+    # recalcula tudo na abertura (fullCalcOnLoad), mas com o cache preenchido a
+    # planilha já mostra número em qualquer visualizador — inclusive prévia de
+    # e-mail e leitura via pandas.
+    cache = {}
+    for i, it in enumerate(itens):
+        r = LINHA_1 + i
+        deficit = max(it["minimo"] - it["atual"], 0)
+        comprar = max(deficit, round(it["minimo"] * fator))
+        if it["atual"] <= 0:
+            status = "Crítico"
+        elif it["atual"] < it["minimo"]:
+            status = "Abaixo do Mínimo"
+        elif it["atual"] == it["minimo"]:
+            status = "No Mínimo"
+        else:
+            status = "Ok"
+        cache[f"G{r}"] = deficit
+        cache[f"H{r}"] = comprar
+        cache[f"I{r}"] = status
+    cache[f"C{tr}"] = f"{len(itens)} itens"
+    cache[f"G{tr}"] = sum(cache[f"G{LINHA_1 + i}"] for i in range(len(itens)))
+    cache[f"H{tr}"] = sum(cache[f"H{LINHA_1 + i}"] for i in range(len(itens)))
+    wb._cache_formulas = cache
+
+    wb.calculation.fullCalcOnLoad = True
     ws.freeze_panes = f"A{LINHA_1}"
     ws.auto_filter.ref = f"A{LINHA_CAB}:I{ultima}"
     ws.page_setup.orientation = "landscape"
@@ -264,6 +293,52 @@ def _aba_legenda(wb):
     return ws
 
 
+def _gravar_cache_formulas(caminho, cache):
+    """Injeta o valor calculado (<v>) em cada célula de fórmula do sheet1.
+
+    openpyxl grava a fórmula sem valor em cache, e então qualquer leitor que
+    não recalcula (pandas, prévia de e-mail, visualizador de celular) mostra
+    a célula vazia. Aqui as fórmulas continuam intactas — só ganham o valor,
+    exatamente como o próprio Excel salvaria.
+    """
+    ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+    ET.register_namespace("", ns)
+    alvo = "xl/worksheets/sheet1.xml"
+
+    with zipfile.ZipFile(caminho) as zin:
+        itens_zip = [(i, zin.read(i.filename)) for i in zin.infolist()]
+
+    novo = None
+    for info, dados in itens_zip:
+        if info.filename != alvo:
+            continue
+        raiz = ET.fromstring(dados)
+        for cel in raiz.iter(f"{{{ns}}}c"):
+            ref = cel.get("r")
+            if ref not in cache or cel.find(f"{{{ns}}}f") is None:
+                continue
+            valor = cache[ref]
+            for antigo in cel.findall(f"{{{ns}}}v"):
+                cel.remove(antigo)
+            v = ET.SubElement(cel, f"{{{ns}}}v")
+            if isinstance(valor, str):
+                cel.set("t", "str")
+                v.text = valor
+            else:
+                cel.attrib.pop("t", None)
+                v.text = repr(float(valor)) if isinstance(valor, float) else str(valor)
+        novo = ET.tostring(raiz, encoding="UTF-8", xml_declaration=True)
+
+    if novo is None:
+        raise RuntimeError(f"{alvo} nao encontrado em {caminho}")
+
+    tmp = caminho + ".tmp"
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
+        for info, dados in itens_zip:
+            zout.writestr(info, novo if info.filename == alvo else dados)
+    shutil.move(tmp, caminho)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("csv_entrada")
@@ -280,6 +355,7 @@ def main():
     itens = ordenar(ler_csv(args.csv_entrada))
     wb = montar(itens, args.revenda, args.fator, data_ref)
     wb.save(args.xlsx_saida)
+    _gravar_cache_formulas(args.xlsx_saida, wb._cache_formulas)
     print(f"OK: {args.xlsx_saida} ({len(itens)} itens)")
 
 
