@@ -38,6 +38,7 @@ param(
     [string]$Sql         = "",   # consulta de leitura direto na origem
     [switch]$Run,                # carrega: bronze -> silver -> gold
     [switch]$Gold,               # so refaz gold e export, sem recarregar
+    [switch]$Estoque,            # so gera a planilha de estoque minimo (sem Oracle)
     # Onde os dados ficam. Fora da pasta do projeto de proposito: o projeto e
     # descartavel (-Update apaga e rebaixa), os dados nao.
     [string]$LakeRoot    = "",
@@ -154,11 +155,17 @@ if ([version]$versao -lt [version]"3.10") {
 Ok "Python $versao em $python"
 
 # -------------------------------------------------------------------- 3. rede
-Etapa 3 "Testando a rota ate $OracleHost na porta $Port"
-Write-Host "    (ate 20s; e aqui que se descobre se esta maquina alcanca o banco)"
-$rota = Test-NetConnection -ComputerName $OracleHost -Port $Port -InformationLevel Quiet -WarningAction SilentlyContinue
-if (-not $rota) {
-    Parar @"
+# Modos offline (-Estoque, -Gold) leem so o que ja esta no lake em disco:
+# nao tocam no Oracle, entao nao faz sentido barrar na rota ao banco.
+if ($Estoque -or $Gold) {
+    Etapa 3 "Rota ao banco -- pulada (modo offline, le so o lake em disco)"
+    Ok "modo offline: nao preciso do Oracle"
+} else {
+    Etapa 3 "Testando a rota ate $OracleHost na porta $Port"
+    Write-Host "    (ate 20s; e aqui que se descobre se esta maquina alcanca o banco)"
+    $rota = Test-NetConnection -ComputerName $OracleHost -Port $Port -InformationLevel Quiet -WarningAction SilentlyContinue
+    if (-not $rota) {
+        Parar @"
 Sem rota TCP ate $OracleHost`:$Port a partir desta maquina.
 Isso acontece antes de qualquer validacao de usuario e senha.
   - a VPN esta conectada?
@@ -166,8 +173,9 @@ Isso acontece antes de qualquer validacao de usuario e senha.
   - o firewall libera a porta $Port?
 Enquanto isso nao passar, nenhuma configuracao adianta.
 "@
+    }
+    Ok "porta $Port respondendo -- esta maquina alcanca o banco"
 }
-Ok "porta $Port respondendo -- esta maquina alcanca o banco"
 
 # ------------------------------------------------------------------- 4. venv
 Etapa 4 "Preparando o ambiente virtual"
@@ -197,6 +205,12 @@ if ($LakeRoot) {
 }
 New-Item -ItemType Directory -Force -Path $lakeRootFinal | Out-Null
 Ok "dados do lake em $lakeRootFinal"
+
+# -Estoque nao usa Oracle: nao pede senha nem mexe no .env. So precisa saber
+# onde o lake esta (o $lakeRootFinal acima), e o script recebe esse caminho.
+if ($Estoque) {
+    Ok "modo -Estoque: pulando credenciais (le so o lake em disco)"
+} else {
 $prefixo = $SourceName.ToUpper()
 $jaTem = (Test-Path $envPath) -and (Select-String -Path $envPath -Pattern "^ORACLE_${prefixo}_DSN=" -Quiet)
 
@@ -234,14 +248,49 @@ if ($jaTem -and -not $Force) {
     $senha = $null
     Ok "credenciais gravadas em .env (fora do git)"
 }
+}
+
+# ----------------------------------------------------------- estoque offline
+# Gera a planilha de estoque minimo a partir do lake que ja esta em disco.
+# Fica aqui, antes da Etapa 6, para nao exigir a conexao ao Oracle.
+if ($Estoque) {
+    Write-Host ""
+    Write-Host "    Gerando a planilha de estoque minimo (sem tocar no Oracle)..." -ForegroundColor Cyan
+    $catalogo = Join-Path $lakeRootFinal "lake.duckdb"
+    $estoqueScript = Join-Path $raiz "scripts\estoque_minimo.py"
+    if (-not (Test-Path $estoqueScript)) { $estoqueScript = Join-Path $lakeRootFinal "estoque_minimo.py" }
+    if (-not (Test-Path $catalogo)) {
+        Parar "Nao achei o lake em $catalogo. Rode uma carga completa antes (precisa da rota Oracle) ou informe -LakeRoot com a pasta certa."
+    }
+    if (-not (Test-Path $estoqueScript)) {
+        Parar "Nao achei o estoque_minimo.py em $raiz\scripts nem em $lakeRootFinal."
+    }
+    & $venvPython $estoqueScript $catalogo
+    $codigo = $LASTEXITCODE
+    Write-Host ""
+    if ($codigo -eq 0) {
+        Write-Host "=== Planilha de estoque minimo gerada ===" -ForegroundColor Green
+        Write-Host "Esta em: $(Join-Path $lakeRootFinal 'export')"
+    } else {
+        Write-Host "=== A geracao terminou com falha (veja acima) ===" -ForegroundColor Yellow
+    }
+    Write-Host "Saida completa em: $saida"
+    try { Stop-Transcript | Out-Null } catch { }
+    exit $codigo
+}
 
 # --------------------------------------------------------------- 6. conexao
-Etapa 6 "Conectando no banco"
-& $venvPython -m datalake.cli test-connection -s $SourceName
-if ($LASTEXITCODE -ne 0) {
-    Parar "A rede passou mas o banco recusou. A mensagem acima diz o motivo (senha, service_name ou permissao)."
+if ($Gold) {
+    Etapa 6 "Conexao ao banco -- pulada (modo -Gold, reprocessa so o lake)"
+    Ok "modo offline"
+} else {
+    Etapa 6 "Conectando no banco"
+    & $venvPython -m datalake.cli test-connection -s $SourceName
+    if ($LASTEXITCODE -ne 0) {
+        Parar "A rede passou mas o banco recusou. A mensagem acima diz o motivo (senha, service_name ou permissao)."
+    }
+    Ok "conectado"
 }
-Ok "conectado"
 
 # -------------------------------------------------------------- 7. discover
 Etapa 7 "Descobrindo o que existe no banco"
