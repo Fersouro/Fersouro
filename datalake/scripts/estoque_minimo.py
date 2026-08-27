@@ -181,6 +181,11 @@ def main():
     # ---- gera planilha ----
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
     saida_dir = os.path.dirname(lake) or "."
+    # Se existir a pasta export do datalake, salva la junto dos outros Excel
+    # (e a pasta que o ATUALIZAR.bat abre no final). Senao, ao lado do lake.
+    exp = os.path.join(saida_dir, "export")
+    if os.path.isdir(exp):
+        saida_dir = exp
     xlsx_path = os.path.join(saida_dir, "estoque_minimo_revenda%d_%s.xlsx" % (revenda, ts))
     try:
         from openpyxl import Workbook

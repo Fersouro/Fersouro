@@ -267,6 +267,20 @@ if ($Run) {
         Write-Host "=== Carga concluida ===" -ForegroundColor Green
         Write-Host "Os dados estao em: $(Join-Path $lakeRootFinal 'gold')"
         Write-Host "Aponte o Power BI para essa pasta (conector Parquet)."
+
+        # Estoque minimo de pecas: gera a planilha a partir do lake recem
+        # carregado. Le o disponivel real da PEC_ITEM_ESTOQUE -- nao inventa
+        # numero. Cai na pasta export, junto dos outros Excel.
+        $catalogo = Join-Path $lakeRootFinal "lake.duckdb"
+        $estoqueScript = Join-Path $raiz "scripts\estoque_minimo.py"
+        if (-not (Test-Path $estoqueScript)) {
+            $estoqueScript = Join-Path $lakeRootFinal "estoque_minimo.py"
+        }
+        if ((Test-Path $estoqueScript) -and (Test-Path $catalogo)) {
+            Write-Host ""
+            Write-Host "    Gerando a planilha de estoque minimo..." -ForegroundColor Cyan
+            & $venvPython $estoqueScript $catalogo
+        }
     } else {
         Write-Host "=== Carga terminou com falhas (veja acima) ===" -ForegroundColor Yellow
     }
