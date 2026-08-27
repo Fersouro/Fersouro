@@ -8,7 +8,7 @@ EMR, Glue); use o .sql quando for consulta ad-hoc no editor do Data Lake.
 >>> PONTOS DE ADAPTAÇÃO: bloco CONFIG abaixo. <<<
 """
 
-from pyspark.sql import SparkSession, functions as F, Window
+from pyspark.sql import SparkSession, functions as F
 
 # ----------------------------------------------------------------------------
 # CONFIG — ajuste apenas aqui os nomes reais de tabelas/colunas
@@ -28,6 +28,7 @@ CONFIG = {
     "col_descricao":       "descricao_produto",
     # parâmetros de negócio
     "id_revenda":          1,
+    "fator_reposicao":     1.0,    # lote de compra = estoque_minimo * fator
     "somente_pendentes":   True,   # False => traz também os itens com status 'Ok'
 }
 
@@ -77,17 +78,28 @@ def analisar_estoque_minimo(spark: SparkSession, cfg: dict = CONFIG):
               "quantidade_reposicao",
               F.greatest(F.col("estoque_minimo") - F.col("estoque_atual"), F.lit(0)),
           )
+          # Peça exatamente no mínimo tem déficit 0, e pedido de 0 peça não serve:
+          # o lote de compra é estoque_minimo * fator, e leva-se o maior dos dois.
+          .withColumn(
+              "quantidade_comprar",
+              F.greatest(
+                  F.col("quantidade_reposicao"),
+                  F.round(F.col("estoque_minimo") * F.lit(c["fator_reposicao"]), 0),
+              ),
+          )
           .withColumn(
               "status_estoque",
               F.when(F.col("estoque_atual") <= 0, F.lit("Crítico"))
                .when(F.col("estoque_atual") < F.col("estoque_minimo"), F.lit("Abaixo do Mínimo"))
+               .when(F.col("estoque_atual") == F.col("estoque_minimo"), F.lit("No Mínimo"))
                .otherwise(F.lit("Ok")),
           )
           .withColumn(
               "ordem_prioridade",
               F.when(F.col("estoque_atual") <= 0, F.lit(1))
                .when(F.col("estoque_atual") < F.col("estoque_minimo"), F.lit(2))
-               .otherwise(F.lit(3)),
+               .when(F.col("estoque_atual") == F.col("estoque_minimo"), F.lit(3))
+               .otherwise(F.lit(4)),
           )
           .withColumn(
               "descricao_peca",
@@ -104,12 +116,13 @@ def analisar_estoque_minimo(spark: SparkSession, cfg: dict = CONFIG):
         df.select(
               "id_peca", "codigo_peca", "descricao_peca", "revenda",
               "estoque_atual", "estoque_minimo", "quantidade_reposicao",
-              "status_estoque", "ordem_prioridade",
+              "quantidade_comprar", "status_estoque", "ordem_prioridade",
           )
           .orderBy(
               F.col("ordem_prioridade").asc(),
-              F.col("quantidade_reposicao").desc(),
-              F.col("descricao_peca").asc(),
+              F.col("quantidade_comprar").desc(),
+              F.col("estoque_minimo").desc(),
+              F.col("codigo_peca").asc(),
           )
           .drop("ordem_prioridade")
     )

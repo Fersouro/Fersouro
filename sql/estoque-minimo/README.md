@@ -7,6 +7,8 @@ do estoque mínimo** e **quanto comprar** de cada uma.
 |---|---|
 | `estoque_minimo_revenda1.sql` | Spark SQL / Databricks — consulta ad-hoc no editor do Data Lake |
 | `estoque_minimo_revenda1_pyspark.py` | Mesma lógica em PySpark, para job/pipeline |
+| `gerar_xls_estoque_minimo.py` | Gera a planilha (.xlsx) de pedido de reposição a partir do resultado |
+| `dados/estoque_minimo_revenda1.csv` | Entrada do gerador (peças informadas manualmente ou exportadas da query) |
 
 ## Raciocínio da query (passo a passo)
 
@@ -25,7 +27,10 @@ do estoque mínimo** e **quanto comprar** de cada uma.
 5. **`classificado`** — regras de negócio:
    - `quantidade_reposicao = GREATEST(estoque_minimo - estoque_atual, 0)` → nunca negativa;
    - `CASE` de status na ordem correta (`<= 0` testado primeiro, senão a ruptura seria
-     classificada como "Abaixo do Mínimo");
+     classificada como "Abaixo do Mínimo") e com a faixa **`No Mínimo`** separada — peça
+     exatamente no mínimo é ponto de pedido, não é "Ok", e sem essa faixa ela sumiria do relatório;
+   - `quantidade_comprar` = maior valor entre o déficit e o lote (`estoque_minimo * fator`),
+     porque peça no mínimo tem déficit 0 e um pedido de 0 peça não serve para nada;
    - `LEFT JOIN` com a dimensão para **não perder** peça sem cadastro — ela aparece como
      `(SEM CADASTRO NA DIMENSÃO)`, que já é um achado de qualidade de dados.
 6. **`ORDER BY`** — `ordem_prioridade` (1 Crítico → 2 Abaixo → 3 Ok), depois
@@ -40,6 +45,7 @@ do estoque mínimo** e **quanto comprar** de cada uma.
 | `status_estoque <> 'Ok'` | último `WHERE` | o enunciado pede o filtro `atual <= mínimo`, mas a coluna de status prevê `Ok`. Deixei a classificação completa e o corte comentável: **comente a linha** para trazer os itens `Ok` também (útil para Power BI, onde o filtro fica no visual). |
 | `estoque_atual <= 0` para "Crítico" | `CASE` | usei `<= 0` em vez de `= 0` porque estoque negativo (erro de baixa/inventário) é ruptura na prática, e com `= 0` ele escaparia da categoria mais grave. |
 | Snapshot da última data | `ultima_carga` | se o fato já for "estado atual" (uma linha por peça, sem histórico), remova a CTE e o join com ela. |
+| `p_fator_reposicao = 1.0` | CTE `parametros` | define o tamanho do lote de compra para quem está no mínimo: 1,00 = comprar uma vez o mínimo. Se a política for "repor até o máximo", troque `estoque_minimo * fator` por `estoque_maximo`. |
 
 ## Adaptação de nomes
 
@@ -67,3 +73,19 @@ Todos os pontos a trocar estão marcados com `-- <<< ADAPTAR` no `.sql` e no blo
   troque por literal `1` ou por parâmetro `:ID_REVENDA`. CTEs (`WITH`) exigem Firebird 2.1+.
 - **Power BI / DirectQuery** — remova o `ORDER BY` (o visual ordena) e mantenha os itens
   `Ok` no resultado, para que os cartões de "% de itens em ruptura" tenham denominador.
+
+## Gerando a planilha de pedido (.xlsx)
+
+```bash
+python gerar_xls_estoque_minimo.py dados/estoque_minimo_revenda1.csv saida.xlsx \
+       --revenda 1 --fator 1.0
+```
+
+Entrada — CSV `;` UTF-8 com cabeçalho `codigo_peca;descricao_peca;estoque_atual;estoque_minimo`.
+Pode vir do `SELECT` acima (exporte o resultado) ou ser digitado à mão.
+
+A planilha sai com **fórmulas, não valores fixos**: mudando o Estoque Atual, o Estoque Mínimo
+ou o **Fator de Reposição** (célula amarela `C5`), o Excel recalcula déficit, quantidade a
+comprar e status sozinho. Texto azul = dado de entrada; texto preto = fórmula. As linhas são
+realçadas por status (vermelho Crítico, amarelo Abaixo do Mínimo, azul No Mínimo) e a aba
+`Legenda` explica cada coluna.

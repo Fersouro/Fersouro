@@ -12,7 +12,8 @@
 
 WITH parametros AS (
     SELECT
-        CAST(1 AS INT) AS p_id_revenda   -- <<< ADAPTAR: revenda alvo da análise
+        CAST(1   AS INT)           AS p_id_revenda,        -- <<< ADAPTAR: revenda alvo da análise
+        CAST(1.0 AS DECIMAL(5,2))  AS p_fator_reposicao   -- lote de compra = estoque_minimo * fator
 ),
 
 -- 1) Snapshot mais recente do fato -------------------------------------------
@@ -68,20 +69,31 @@ classificado AS (
         -- Necessidade de reposição: nunca negativa (item acima do mínimo => 0)
         GREATEST(e.estoque_minimo - e.estoque_atual, 0) AS quantidade_reposicao,
 
+        -- Quanto efetivamente comprar. Peça EXATAMENTE no mínimo tem déficit 0,
+        -- e um pedido de 0 peça não serve para nada: por isso o lote de compra é
+        -- estoque_minimo * p_fator_reposicao, e leva-se o maior dos dois.
+        GREATEST(
+            GREATEST(e.estoque_minimo - e.estoque_atual, 0),
+            ROUND(e.estoque_minimo * p.p_fator_reposicao, 0)
+        ) AS quantidade_comprar,
+
         CASE
             WHEN e.estoque_atual <= 0                  THEN 'Crítico'            -- ruptura
             WHEN e.estoque_atual <  e.estoque_minimo   THEN 'Abaixo do Mínimo'
+            WHEN e.estoque_atual =  e.estoque_minimo   THEN 'No Mínimo'          -- ponto de pedido
             ELSE                                            'Ok'
         END AS status_estoque,
 
-        -- Chave de ordenação: ruptura primeiro, depois abaixo do mínimo, depois Ok
+        -- Chave de ordenação: ruptura > abaixo do mínimo > no mínimo > Ok
         CASE
             WHEN e.estoque_atual <= 0                  THEN 1
             WHEN e.estoque_atual <  e.estoque_minimo   THEN 2
-            ELSE                                            3
+            WHEN e.estoque_atual =  e.estoque_minimo   THEN 3
+            ELSE                                            4
         END AS ordem_prioridade
 
     FROM estoque_consolidado e
+    CROSS JOIN parametros p
     LEFT JOIN datalake.gold.dim_produto d            -- <<< ADAPTAR (LEFT para não perder peça sem cadastro)
            ON d.id_produto = e.id_peca               -- <<< ADAPTAR
           -- AND d.flag_registro_atual = 1           -- <<< OPCIONAL: se a dim for SCD tipo 2
@@ -94,12 +106,14 @@ SELECT
     revenda,
     estoque_atual,
     estoque_minimo,
-    quantidade_reposicao,
+    quantidade_reposicao,   -- déficit puro (mínimo - atual); 0 para peça no mínimo
+    quantidade_comprar,     -- o que entra no pedido de compra
     status_estoque
 FROM classificado
 WHERE estoque_minimo > 0        -- ignora peças sem política de mínimo (evita falso "Crítico")
   AND status_estoque <> 'Ok'    -- <<< COMENTE esta linha para trazer também os itens 'Ok'
 ORDER BY
-    ordem_prioridade      ASC,  -- 1) Crítico  2) Abaixo do Mínimo  3) Ok
-    quantidade_reposicao  DESC, -- 2) maior déficit primeiro
-    descricao_peca        ASC;  -- 3) desempate estável
+    ordem_prioridade      ASC,  -- 1) Crítico 2) Abaixo do Mínimo 3) No Mínimo 4) Ok
+    quantidade_comprar    DESC, -- 2) maior pedido primeiro
+    estoque_minimo        DESC, -- 3) desempate por peça de maior giro
+    codigo_peca           ASC;  -- 4) desempate estável
