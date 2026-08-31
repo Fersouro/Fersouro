@@ -31,7 +31,24 @@ from urllib.parse import parse_qs, urlparse
 import consolidar
 
 BASE = Path(__file__).resolve().parent
-PLANILHA_PADRAO = BASE.parent / "Estrategico_PAC_VII_5.xlsx"
+NOME_PLANILHA = "Estrategico_PAC_VII_5.xlsx"
+
+
+def _achar_planilha_padrao() -> Path:
+    """
+    Procura a planilha Estratégico na pasta do projeto e ao lado do app.py.
+
+    Assim funciona tanto no repositório (webapp/../planilha.xlsx) quanto quando
+    todos os arquivos são copiados soltos para uma única pasta.
+    """
+    for pasta in (BASE.parent, BASE):
+        caminho = pasta / NOME_PLANILHA
+        if caminho.exists():
+            return caminho
+    return BASE.parent / NOME_PLANILHA   # caminho citado na mensagem de erro
+
+
+PLANILHA_PADRAO = _achar_planilha_padrao()
 
 TAMANHO_MAXIMO = 40 * 1024 * 1024   # 40 MB por requisição
 MAX_SESSOES = 30                    # sessões guardadas em memória

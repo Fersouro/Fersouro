@@ -18,8 +18,19 @@ git checkout claude/estrategico-vw-consolidada-o8u9k5
 cd estrategico-vw\webapp
 ```
 
-Sem `git` instalado, baixe o ZIP em *Code → Download ZIP* na página do
-repositório (escolhendo a branch acima) e extraia.
+Sem `git` instalado, baixe e extraia com um comando só:
+
+```powershell
+cd $HOME
+$url = "https://github.com/Fersouro/Fersouro/archive/refs/heads/claude/estrategico-vw-consolidada-o8u9k5.zip"
+Invoke-WebRequest $url -OutFile projeto.zip
+Expand-Archive projeto.zip -DestinationPath . -Force
+cd Fersouro-claude-estrategico-vw-consolidada-o8u9k5\estrategico-vw\webapp
+```
+
+Também funciona copiar `app.py`, `consolidar.py`, `index.html` e a planilha
+Estratégico soltos numa pasta única — o servidor procura a planilha ao lado
+do `app.py` e na pasta acima.
 
 Depois, sempre que quiser subir:
 
