@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consolidador Estratégico VW</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231f3864'/%3E%3Ctext x='16' y='22' font-family='Arial' font-size='16' font-weight='bold' fill='white' text-anchor='middle'%3EVW%3C/text%3E%3C/svg%3E">
+<style>
+  :root{
+    --fundo:#f4f6f9; --painel:#fff; --texto:#16202e; --suave:#5b6b80;
+    --borda:#dde3ec; --marca:#1f3864; --marca-clara:#2d55a3;
+    --ok:#1a7f4b; --alerta:#a8600a; --erro:#b3261e;
+    --ok-bg:#e7f5ee; --alerta-bg:#fdf3e0; --erro-bg:#fdeceb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--fundo);color:var(--texto);
+    font:14px/1.5 Arial,Helvetica,sans-serif}
+  header{background:var(--marca);color:#fff;padding:18px 24px}
+  header h1{margin:0;font-size:19px;letter-spacing:.2px}
+  header p{margin:4px 0 0;opacity:.82;font-size:13px}
+  main{max-width:1120px;margin:0 auto;padding:22px 16px 60px}
+  .painel{background:var(--painel);border:1px solid var(--borda);border-radius:8px;
+    padding:18px 20px;margin-bottom:18px}
+  .painel h2{margin:0 0 4px;font-size:15px}
+  .painel .dica{margin:0 0 14px;color:var(--suave);font-size:13px}
+  .zona{border:2px dashed var(--borda);border-radius:8px;padding:22px;text-align:center;
+    cursor:pointer;transition:.15s;background:#fbfcfe}
+  .zona:hover,.zona.sobre{border-color:var(--marca-clara);background:#f0f4fc}
+  .zona.cheia{border-style:solid;border-color:var(--ok);background:var(--ok-bg);text-align:left}
+  .zona strong{display:block;font-size:14px}
+  .zona span{color:var(--suave);font-size:12.5px}
+  .linha{display:flex;gap:16px;flex-wrap:wrap}
+  .linha>div{flex:1 1 280px}
+  label{display:block;font-weight:bold;font-size:12.5px;margin-bottom:5px}
+  select,input[type=number]{width:100%;padding:7px 9px;border:1px solid var(--borda);
+    border-radius:5px;font:inherit;background:#fff;color:inherit}
+  button{background:var(--marca);color:#fff;border:0;border-radius:6px;
+    padding:10px 20px;font:bold 14px Arial,sans-serif;cursor:pointer}
+  button:hover{background:var(--marca-clara)}
+  button:disabled{background:#a9b4c4;cursor:not-allowed}
+  button.secundario{background:#fff;color:var(--marca);border:1px solid var(--marca)}
+  button.secundario:hover{background:#eef2fa}
+  .acoes{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px}
+  .cartoes{display:flex;gap:10px;flex-wrap:wrap;margin:4px 0 16px}
+  .cartao{flex:1 1 140px;background:#f7f9fc;border:1px solid var(--borda);
+    border-radius:7px;padding:11px 13px}
+  .cartao b{display:block;font-size:21px;line-height:1.2}
+  .cartao span{color:var(--suave);font-size:12px}
+  .cartao.bom b{color:var(--ok)} .cartao.ruim b{color:var(--erro)}
+  .aviso{padding:11px 14px;border-radius:6px;margin-bottom:14px;font-size:13px}
+  .aviso.erro{background:var(--erro-bg);color:var(--erro);border:1px solid #f3c9c6}
+  .aviso.alerta{background:var(--alerta-bg);color:var(--alerta);border:1px solid #f0dcb8}
+  .tabela-caixa{overflow-x:auto;border:1px solid var(--borda);border-radius:7px;
+    max-height:460px;overflow-y:auto}
+  table{border-collapse:collapse;width:100%;font-size:13px;background:#fff}
+  th{background:var(--marca);color:#fff;text-align:left;padding:9px 11px;
+    position:sticky;top:0;white-space:nowrap}
+  td{padding:7px 11px;border-top:1px solid #eef1f6;white-space:nowrap}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  tr.ausente td{background:#fdf6e6}
+  .selo{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:bold}
+  .selo.exato{background:var(--ok-bg);color:var(--ok)}
+  .selo.normalizado{background:#e8f0fd;color:var(--marca-clara)}
+  .selo.sem_valor{background:var(--alerta-bg);color:var(--alerta)}
+  .selo.nao_encontrado{background:var(--erro-bg);color:var(--erro)}
+  .oculto{display:none}
+  footer{color:var(--suave);font-size:12px;text-align:center;padding:0 16px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Consolidador Estratégico VW</h1>
+  <p>Envie o extrato do DataLake e baixe a planilha consolidada com o preço estratégico.</p>
+</header>
+
+<main>
+  <div id="aviso" class="aviso erro oculto"></div>
+
+  <section class="painel">
+    <h2>1. Arquivos</h2>
+    <p class="dica">O extrato é obrigatório. A planilha Estratégico é opcional —
+      sem ela, é usada a que está no servidor.</p>
+    <div class="linha">
+      <div>
+        <label>Extrato do DataLake (CSV, TSV ou XLSX)</label>
+        <div class="zona" id="zonaExtrato" tabindex="0" role="button">
+          <strong id="rotuloExtrato">Clique ou arraste o arquivo aqui</strong>
+          <span id="detalheExtrato">Precisa conter o código da peça, o estoque e o preço público</span>
+        </div>
+        <input type="file" id="arqExtrato" class="oculto" accept=".csv,.tsv,.txt,.xlsx,.xlsm">
+      </div>
+      <div>
+        <label>Planilha Estratégico (opcional)</label>
+        <div class="zona" id="zonaPedido" tabindex="0" role="button">
+          <strong id="rotuloPedido">Usar a planilha padrão do servidor</strong>
+          <span id="detalhePedido">Clique para enviar outra versão (.xlsx com a aba “Pedido”)</span>
+        </div>
+        <input type="file" id="arqPedido" class="oculto" accept=".xlsx,.xlsm">
+      </div>
+    </div>
+    <div class="acoes">
+      <div style="flex:0 0 190px">
+        <label for="acrescimo">Acréscimo estratégico (%)</label>
+        <input type="number" id="acrescimo" value="40" min="0" max="500" step="0.5">
+      </div>
+      <button id="btnProcessar" disabled>Processar</button>
+      <span id="carregando" class="oculto" style="color:var(--suave)">processando…</span>
+    </div>
+  </section>
+
+  <section class="painel oculto" id="painelMapa">
+    <h2>2. Conferência das colunas</h2>
+    <p class="dica">Detectadas automaticamente pelo cabeçalho do extrato. Corrija se algo saiu errado.</p>
+    <div class="linha">
+      <div><label for="colCodigo">Código da peça</label><select id="colCodigo"></select></div>
+      <div><label for="colEstoque">Estoque</label><select id="colEstoque"></select></div>
+      <div><label for="colPublico">Preço público</label><select id="colPublico"></select></div>
+    </div>
+    <div class="acoes"><button id="btnRemapear" class="secundario">Reprocessar com estas colunas</button></div>
+  </section>
+
+  <section class="painel oculto" id="painelResultado">
+    <h2>3. Resultado</h2>
+    <div class="cartoes" id="cartoes"></div>
+    <div id="avisoMatch" class="aviso alerta oculto"></div>
+    <div class="acoes" style="margin:0 0 14px">
+      <button id="btnXlsx">Baixar XLSX</button>
+      <button id="btnCsv" class="secundario">Baixar CSV</button>
+    </div>
+    <div class="tabela-caixa">
+      <table>
+        <thead><tr>
+          <th>Código da Peça</th><th>Descrição</th><th>Estoque</th>
+          <th>Preço Público</th><th>Preço Original (H)</th>
+          <th id="thEstrategico">Preço Estratégico</th><th>Cruzamento</th>
+        </tr></thead>
+        <tbody id="corpoTabela"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>Servidor sem autenticação — mantenha apenas na rede interna.</footer>
+</main>
+
+<script>
+(function(){
+  "use strict";
+  var estado = { extrato:null, pedido:null, id:null, cabecalhos:[] };
+  var $ = function(id){ return document.getElementById(id); };
+
+  var moeda = new Intl.NumberFormat("pt-BR",
+    {style:"currency", currency:"BRL", minimumFractionDigits:2});
+  var inteiro = new Intl.NumberFormat("pt-BR");
+
+  var SELOS = { exato:"Exato", normalizado:"Normalizado",
+                sem_valor:"Sem valor", nao_encontrado:"Não encontrado" };
+
+  function mostrarErro(msg){
+    var el = $("aviso");
+    el.textContent = msg;
+    el.classList.toggle("oculto", !msg);
+    if (msg) window.scrollTo({top:0, behavior:"smooth"});
+  }
+
+  // ---------------------------------------------------------------- arquivos
+  function ligarZona(zona, input, campo, rotulo, detalhe, textoVazio, dicaVazia){
+    function abrir(){ input.click(); }
+    zona.addEventListener("click", abrir);
+    zona.addEventListener("keydown", function(e){
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); abrir(); }
+    });
+    ["dragenter","dragover"].forEach(function(evt){
+      zona.addEventListener(evt, function(e){
+        e.preventDefault(); zona.classList.add("sobre");
+      });
+    });
+    ["dragleave","drop"].forEach(function(evt){
+      zona.addEventListener(evt, function(e){
+        e.preventDefault(); zona.classList.remove("sobre");
+      });
+    });
+    zona.addEventListener("drop", function(e){
+      if (e.dataTransfer.files.length) { input.files = e.dataTransfer.files; aplicar(); }
+    });
+    input.addEventListener("change", aplicar);
+
+    function aplicar(){
+      var arquivo = input.files && input.files[0];
+      estado[campo] = arquivo || null;
+      if (arquivo) {
+        zona.classList.add("cheia");
+        rotulo.textContent = arquivo.name;
+        detalhe.textContent = (arquivo.size/1024).toFixed(1) + " KB — clique para trocar";
+      } else {
+        zona.classList.remove("cheia");
+        rotulo.textContent = textoVazio;
+        detalhe.textContent = dicaVazia;
+      }
+      $("btnProcessar").disabled = !estado.extrato;
+      mostrarErro("");
+    }
+  }
+
+  ligarZona($("zonaExtrato"), $("arqExtrato"), "extrato",
+    $("rotuloExtrato"), $("detalheExtrato"),
+    "Clique ou arraste o arquivo aqui",
+    "Precisa conter o código da peça, o estoque e o preço público");
+  ligarZona($("zonaPedido"), $("arqPedido"), "pedido",
+    $("rotuloPedido"), $("detalhePedido"),
+    "Usar a planilha padrão do servidor",
+    "Clique para enviar outra versão (.xlsx com a aba “Pedido”)");
+
+  // ------------------------------------------------------------------ envio
+  function ocupado(sim){
+    $("btnProcessar").disabled = sim || !estado.extrato;
+    $("btnRemapear").disabled = sim;
+    $("carregando").classList.toggle("oculto", !sim);
+  }
+
+  async function ler(resposta){
+    var dados;
+    try { dados = await resposta.json(); }
+    catch (e) { throw new Error("Resposta inválida do servidor (HTTP " + resposta.status + ")."); }
+    if (!resposta.ok) throw new Error(dados.erro || ("Erro HTTP " + resposta.status));
+    return dados;
+  }
+
+  $("btnProcessar").addEventListener("click", async function(){
+    if (!estado.extrato) return;
+    mostrarErro(""); ocupado(true);
+    try {
+      var form = new FormData();
+      form.append("extrato", estado.extrato);
+      if (estado.pedido) form.append("pedido", estado.pedido);
+      form.append("acrescimo", $("acrescimo").value || "40");
+      var dados = await ler(await fetch("/api/processar", {method:"POST", body:form}));
+      estado.cabecalhos = dados.cabecalhos;
+      montarSelects(dados.mapa);
+      render(dados);
+    } catch (e) { mostrarErro(e.message); }
+    finally { ocupado(false); }
+  });
+
+  $("btnRemapear").addEventListener("click", async function(){
+    if (!estado.id) return;
+    mostrarErro(""); ocupado(true);
+    try {
+      var dados = await ler(await fetch("/api/remapear", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          id: estado.id,
+          codigo: $("colCodigo").value,
+          estoque: $("colEstoque").value,
+          publico: $("colPublico").value,
+          acrescimo: $("acrescimo").value || "40"
+        })
+      }));
+      render(dados);
+    } catch (e) { mostrarErro(e.message); }
+    finally { ocupado(false); }
+  });
+
+  // ------------------------------------------------------------------ render
+  function montarSelects(mapa){
+    [["colCodigo","codigo"],["colEstoque","estoque"],["colPublico","publico"]]
+      .forEach(function(par){
+        var sel = $(par[0]);
+        sel.innerHTML = "";
+        var vazio = new Option("— nenhuma —", "-1");
+        sel.appendChild(vazio);
+        estado.cabecalhos.forEach(function(nome, i){
+          sel.appendChild(new Option(nome, String(i)));
+        });
+        var escolhido = mapa[par[1]];
+        sel.value = (escolhido === null || escolhido === undefined) ? "-1" : String(escolhido);
+      });
+    $("painelMapa").classList.remove("oculto");
+  }
+
+  function cartao(valor, rotulo, classe){
+    return '<div class="cartao ' + (classe||"") + '"><b>' + valor +
+           '</b><span>' + rotulo + '</span></div>';
+  }
+
+  function render(dados){
+    estado.id = dados.id;
+
+    // extrato sem cabeçalho reconhecível: só o mapeamento manual resolve
+    if (dados.precisaMapear) {
+      $("painelResultado").classList.add("oculto");
+      mostrarErro(dados.mensagem || "Indique as colunas do extrato abaixo.");
+      $("painelMapa").scrollIntoView({behavior:"smooth", block:"nearest"});
+      return;
+    }
+
+    var e = dados.estatisticas;
+    var pct = Math.round(((e.exato + e.normalizado) / (e.total || 1)) * 100);
+
+    $("cartoes").innerHTML =
+      cartao(e.total, "itens na planilha") +
+      cartao(inteiro.format(e.linhas_extrato), "linhas no extrato") +
+      cartao(e.exato + e.normalizado, "cruzados (" + pct + "%)", "bom") +
+      cartao(e.sem_valor, "sem valor no extrato") +
+      cartao(e.nao_encontrado, "não encontrados", e.nao_encontrado ? "ruim" : "");
+
+    var recados = [];
+    if (e.normalizado)
+      recados.push(e.normalizado + " item(ns) casaram só após ignorar traços e espaços do código.");
+    if (e.nao_encontrado)
+      recados.push(e.nao_encontrado + " item(ns) não estão no extrato — as linhas em amarelo. " +
+                   "Se o número parecer alto, confira se a coluna de código está correta acima.");
+    if (e.sem_valor)
+      recados.push(e.sem_valor + " item(ns) foram achados no extrato, mas sem estoque nem preço.");
+    var av = $("avisoMatch");
+    av.innerHTML = recados.join("<br>");
+    av.classList.toggle("oculto", recados.length === 0);
+
+    var pctAcrescimo = Math.round(dados.acrescimo * 1000) / 10;
+    $("thEstrategico").textContent = "Preço Estratégico (+" + pctAcrescimo + "%)";
+
+    var linhas = dados.itens.map(function(item){
+      var ausente = item.origem === "nao_encontrado";
+      function num(v, fmt){ return v === null || v === undefined ? "—" : fmt.format(v); }
+      return '<tr class="' + (ausente ? "ausente" : "") + '">' +
+        "<td>" + escapar(item.codigo) + "</td>" +
+        "<td>" + escapar(item.descricao) + "</td>" +
+        '<td class="num">' + num(item.estoque, inteiro) + "</td>" +
+        '<td class="num">' + num(item.precoPublico, moeda) + "</td>" +
+        '<td class="num">' + num(item.precoOriginal, moeda) + "</td>" +
+        '<td class="num">' + num(item.precoEstrategico, moeda) + "</td>" +
+        '<td><span class="selo ' + item.origem + '">' +
+          (SELOS[item.origem] || item.origem) + "</span></td>" +
+      "</tr>";
+    });
+    $("corpoTabela").innerHTML = linhas.join("");
+    $("painelResultado").classList.remove("oculto");
+    $("painelResultado").scrollIntoView({behavior:"smooth", block:"nearest"});
+  }
+
+  function escapar(texto){
+    return String(texto === null || texto === undefined ? "" : texto)
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+
+  $("btnXlsx").addEventListener("click", function(){
+    if (estado.id) window.location.href = "/api/baixar/" + estado.id + ".xlsx";
+  });
+  $("btnCsv").addEventListener("click", function(){
+    if (estado.id) window.location.href = "/api/baixar/" + estado.id + ".csv";
+  });
+})();
+</script>
+</body>
+</html>
