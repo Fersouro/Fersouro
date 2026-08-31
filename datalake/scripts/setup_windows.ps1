@@ -37,6 +37,7 @@ param(
     [string]$Peek        = "",   # espia as primeiras linhas de um objeto
     [string]$Sql         = "",   # consulta de leitura direto na origem
     [switch]$Run,                # carrega: bronze -> silver -> gold
+    [switch]$KeepGoing,          # uma tabela com falha nao trava a carga (automacao)
     [switch]$Gold,               # so refaz gold e export, sem recarregar
     [switch]$Estoque,            # so gera a planilha de estoque minimo (sem Oracle)
     # Onde os dados ficam. Fora da pasta do projeto de proposito: o projeto e
@@ -310,29 +311,35 @@ if ($Gold) {
 }
 if ($Run) {
     Write-Host "    Carregando: bronze -> silver -> gold" -ForegroundColor Cyan
-    & $venvPython -m datalake.cli run -s $SourceName
+    # -KeepGoing: uma tabela com problema nao trava o resto da carga. Serve a
+    # automacao (6x/dia), onde e melhor atualizar 10 tabelas e a pagina do que
+    # parar tudo por causa de uma.
+    if ($KeepGoing) {
+        & $venvPython -m datalake.cli run -s $SourceName --keep-going
+    } else {
+        & $venvPython -m datalake.cli run -s $SourceName
+    }
     $codigo = $LASTEXITCODE
     Write-Host ""
     if ($codigo -eq 0) {
         Write-Host "=== Carga concluida ===" -ForegroundColor Green
-        Write-Host "Os dados estao em: $(Join-Path $lakeRootFinal 'gold')"
-        Write-Host "Aponte o Power BI para essa pasta (conector Parquet)."
-
-        # Estoque minimo de pecas: gera a PAGINA (HTML) e a planilha a partir
-        # do lake recem carregado. Le o disponivel real (PEC_ITEM_REVENDA.
-        # qtd_contabil) -- nao inventa numero. Cai na pasta export.
-        $catalogo = Join-Path $lakeRootFinal "lake.duckdb"
-        $estoqueScript = Join-Path $raiz "scripts\gerar_estoque.py"
-        if (-not (Test-Path $estoqueScript)) {
-            $estoqueScript = Join-Path $lakeRootFinal "gerar_estoque.py"
-        }
-        if ((Test-Path $estoqueScript) -and (Test-Path $catalogo)) {
-            Write-Host ""
-            Write-Host "    Gerando a pagina e a planilha de estoque minimo..." -ForegroundColor Cyan
-            & $venvPython $estoqueScript $catalogo
-        }
     } else {
         Write-Host "=== Carga terminou com falhas (veja acima) ===" -ForegroundColor Yellow
+    }
+    Write-Host "Os dados estao em: $(Join-Path $lakeRootFinal 'gold')"
+
+    # Estoque minimo: gera a PAGINA (HTML) e a planilha a partir do lake. Roda
+    # mesmo com falha parcial -- desde que o catalogo exista, a pagina reflete o
+    # que ja esta carregado (com -KeepGoing, inclui a pec_item_revenda).
+    $catalogo = Join-Path $lakeRootFinal "lake.duckdb"
+    $estoqueScript = Join-Path $raiz "scripts\gerar_estoque.py"
+    if (-not (Test-Path $estoqueScript)) {
+        $estoqueScript = Join-Path $lakeRootFinal "gerar_estoque.py"
+    }
+    if ((Test-Path $estoqueScript) -and (Test-Path $catalogo)) {
+        Write-Host ""
+        Write-Host "    Gerando a pagina e a planilha de estoque minimo..." -ForegroundColor Cyan
+        & $venvPython $estoqueScript $catalogo
     }
     Write-Host "Saida completa em: $saida"
     try { Stop-Transcript | Out-Null } catch { }
