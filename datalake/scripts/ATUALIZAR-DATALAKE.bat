@@ -18,7 +18,7 @@ echo.
 echo  Atualizando o datalake (carga + pagina). Nao feche esta janela.
 echo.
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$s=(Get-ChildItem 'C:\datalake\app' -Recurse -Filter setup_windows.ps1 -ErrorAction SilentlyContinue ^| Select-Object -First 1).FullName; if (-not $s){ Write-Host 'ERRO: C:\datalake\app sem o projeto. Rode instalar_app.ps1 uma vez.' -ForegroundColor Red; exit 1 }; & $s -Run -KeepGoing -LakeRoot 'C:\datalake'"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$s=(Get-ChildItem 'C:\datalake\app' -Recurse -Filter setup_windows.ps1 -ErrorAction SilentlyContinue | Select-Object -First 1).FullName; if (-not $s){ Write-Host 'ERRO: C:\datalake\app sem o projeto. Rode instalar_app.ps1 uma vez.' -ForegroundColor Red; exit 1 }; & $s -Run -KeepGoing -LakeRoot 'C:\datalake'"
 set CODIGO=%ERRORLEVEL%
 
 echo.
