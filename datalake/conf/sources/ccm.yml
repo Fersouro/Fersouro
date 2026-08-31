@@ -69,13 +69,18 @@ tables:
   # O filtro amarra os itens as notas ja recortadas acima, em vez de repetir a
   # regra de data: item nao tem data propria, e recortar por conta propria
   # deixaria item sem capa (ou o contrario) na hora do join.
+  #
+  # ATENCAO: qualifique com CNP. qualquer tabela citada DENTRO do filter. O
+  # conector qualifica so a tabela do FROM principal; o texto do filter vai
+  # verbatim para o SQL, e sem o schema o Oracle procura no schema do usuario
+  # da conexao (FERNANDO_DEV) e devolve ORA-00942.
   - name: FAT_MOVIMENTO_ITEM
     load_mode: full
     filter: >-
       (EMPRESA, REVENDA, NUMERO_NOTA_FISCAL, SERIE_NOTA_FISCAL, TIPO_TRANSACAO, CONTADOR)
       IN (SELECT EMPRESA, REVENDA, NUMERO_NOTA_FISCAL, SERIE_NOTA_FISCAL,
                  TIPO_TRANSACAO, CONTADOR
-            FROM FAT_MOVIMENTO_CAPA
+            FROM CNP.FAT_MOVIMENTO_CAPA
            WHERE DTA_DOCUMENTO >= ADD_MONTHS(TRUNC(SYSDATE), -24)
               OR DTA_ENTRADA_SAIDA >= ADD_MONTHS(TRUNC(SYSDATE), -24))
     quality:
