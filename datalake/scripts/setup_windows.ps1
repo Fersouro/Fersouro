@@ -255,22 +255,23 @@ if ($jaTem -and -not $Force) {
 # Fica aqui, antes da Etapa 6, para nao exigir a conexao ao Oracle.
 if ($Estoque) {
     Write-Host ""
-    Write-Host "    Gerando a planilha de estoque minimo (sem tocar no Oracle)..." -ForegroundColor Cyan
+    Write-Host "    Gerando a pagina e a planilha de estoque minimo (sem tocar no Oracle)..." -ForegroundColor Cyan
     $catalogo = Join-Path $lakeRootFinal "lake.duckdb"
-    $estoqueScript = Join-Path $raiz "scripts\estoque_minimo.py"
-    if (-not (Test-Path $estoqueScript)) { $estoqueScript = Join-Path $lakeRootFinal "estoque_minimo.py" }
+    $estoqueScript = Join-Path $raiz "scripts\gerar_estoque.py"
+    if (-not (Test-Path $estoqueScript)) { $estoqueScript = Join-Path $lakeRootFinal "gerar_estoque.py" }
     if (-not (Test-Path $catalogo)) {
         Parar "Nao achei o lake em $catalogo. Rode uma carga completa antes (precisa da rota Oracle) ou informe -LakeRoot com a pasta certa."
     }
     if (-not (Test-Path $estoqueScript)) {
-        Parar "Nao achei o estoque_minimo.py em $raiz\scripts nem em $lakeRootFinal."
+        Parar "Nao achei o gerar_estoque.py em $raiz\scripts nem em $lakeRootFinal."
     }
     & $venvPython $estoqueScript $catalogo
     $codigo = $LASTEXITCODE
     Write-Host ""
     if ($codigo -eq 0) {
-        Write-Host "=== Planilha de estoque minimo gerada ===" -ForegroundColor Green
-        Write-Host "Esta em: $(Join-Path $lakeRootFinal 'export')"
+        Write-Host "=== Pagina e planilha de estoque minimo geradas ===" -ForegroundColor Green
+        Write-Host "Estao em: $(Join-Path $lakeRootFinal 'export')"
+        Write-Host "Pagina: $(Join-Path $lakeRootFinal 'export\estoque_minimo.html')"
     } else {
         Write-Host "=== A geracao terminou com falha (veja acima) ===" -ForegroundColor Yellow
     }
@@ -317,17 +318,17 @@ if ($Run) {
         Write-Host "Os dados estao em: $(Join-Path $lakeRootFinal 'gold')"
         Write-Host "Aponte o Power BI para essa pasta (conector Parquet)."
 
-        # Estoque minimo de pecas: gera a planilha a partir do lake recem
-        # carregado. Le o disponivel real da PEC_ITEM_ESTOQUE -- nao inventa
-        # numero. Cai na pasta export, junto dos outros Excel.
+        # Estoque minimo de pecas: gera a PAGINA (HTML) e a planilha a partir
+        # do lake recem carregado. Le o disponivel real (PEC_ITEM_REVENDA.
+        # qtd_contabil) -- nao inventa numero. Cai na pasta export.
         $catalogo = Join-Path $lakeRootFinal "lake.duckdb"
-        $estoqueScript = Join-Path $raiz "scripts\estoque_minimo.py"
+        $estoqueScript = Join-Path $raiz "scripts\gerar_estoque.py"
         if (-not (Test-Path $estoqueScript)) {
-            $estoqueScript = Join-Path $lakeRootFinal "estoque_minimo.py"
+            $estoqueScript = Join-Path $lakeRootFinal "gerar_estoque.py"
         }
         if ((Test-Path $estoqueScript) -and (Test-Path $catalogo)) {
             Write-Host ""
-            Write-Host "    Gerando a planilha de estoque minimo..." -ForegroundColor Cyan
+            Write-Host "    Gerando a pagina e a planilha de estoque minimo..." -ForegroundColor Cyan
             & $venvPython $estoqueScript $catalogo
         }
     } else {

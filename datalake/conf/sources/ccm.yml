@@ -87,6 +87,14 @@ tables:
     quality:
       row_count_min: 1
 
+  # Saldo da peca por revenda. E daqui que sai o "Disponivel" da consulta
+  # gerencial: a coluna QTD_CONTABIL, por (ITEM_ESTOQUE, REVENDA). O cadastro
+  # PEC_ITEM_ESTOQUE tem uma linha por peca; o saldo por loja mora aqui.
+  - name: PEC_ITEM_REVENDA
+    load_mode: full
+    quality:
+      row_count_min: 1
+
   # Tipo de transacao: separa venda (S/N) de devolucao (E/D).
   - name: FAT_TIPO_TRANSACAO
     load_mode: full
