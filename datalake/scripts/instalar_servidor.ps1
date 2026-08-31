@@ -52,8 +52,12 @@ Info "Localizando o servir_pagina.py"
 $src = $null
 if (Test-Path $Destino) { $src = $Destino }
 if (-not $src) {
-    $src = (Get-ChildItem $env:USERPROFILE -Recurse -Filter servir_pagina.py `
-            -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+    foreach ($raizBusca in @("C:\datalake\app", "C:\datalake", $env:USERPROFILE)) {
+        if (-not (Test-Path $raizBusca)) { continue }
+        $achado = Get-ChildItem $raizBusca -Recurse -Filter servir_pagina.py `
+                    -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($achado) { $src = $achado.FullName; break }
+    }
 }
 if (-not $src) {
     Write-Host "Nao achei servir_pagina.py. Rode antes o -Update para baixar o projeto." -ForegroundColor Red
