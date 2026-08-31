@@ -6,6 +6,47 @@ cruzada, sem precisar mexer em script nenhum. Roda na sua máquina/servidor e
 
 ## Como subir
 
+### Windows (PowerShell ou Prompt de Comando)
+
+Baixe o projeto uma vez:
+
+```powershell
+cd $HOME
+git clone https://github.com/Fersouro/Fersouro.git
+cd Fersouro
+git checkout claude/estrategico-vw-consolidada-o8u9k5
+cd estrategico-vw\webapp
+```
+
+Sem `git` instalado, baixe o ZIP em *Code → Download ZIP* na página do
+repositório (escolhendo a branch acima) e extraia.
+
+Depois, sempre que quiser subir:
+
+```powershell
+.\iniciar.bat          # porta 8000
+.\iniciar.bat 8080     # outra porta
+```
+
+Ou, sem usar o atalho:
+
+```powershell
+pip install openpyxl
+python app.py --porta 8000
+```
+
+Observações do Windows:
+
+- Precisa de **Python 3.9+** com a opção *Add python.exe to PATH* marcada na
+  instalação. Confira com `python --version`.
+- Na primeira execução o **Firewall do Windows** vai perguntar se libera o
+  Python — marque **redes privadas** e permita, senão os outros computadores
+  não enxergam a página.
+- `.\iniciar.bat` (com `.\` na frente) é o jeito certo de chamar no
+  PowerShell. `.sh` é script de Linux e não roda aqui.
+
+### Linux e macOS
+
 ```bash
 cd estrategico-vw/webapp
 ./iniciar.sh          # porta 8000
@@ -22,11 +63,14 @@ O terminal mostra os dois endereços:
 Qualquer pessoa na mesma rede abre o segundo endereço no navegador. Só é
 preciso Python 3.9+ e `openpyxl` (o `iniciar.sh` instala se faltar).
 
-Para rodar em segundo plano:
+Para rodar em segundo plano (Linux/macOS):
 
 ```bash
 nohup python3 app.py --porta 8000 > consolidador.log 2>&1 &
 ```
+
+No Windows, deixe a janela do `iniciar.bat` aberta e minimizada — fechá-la
+derruba o servidor.
 
 ## Como usar
 
@@ -70,7 +114,8 @@ do cruzamento. A coluna E é fórmula (`=D2*(1+Parâmetros!$B$3)`), então mudar
 | `app.py` | servidor HTTP (só biblioteca padrão) e rotas da API |
 | `consolidar.py` | leitura das planilhas, cruzamento e geração da saída |
 | `index.html` | interface (sem CDN — funciona sem internet) |
-| `iniciar.sh` | atalho de inicialização |
+| `iniciar.bat` | atalho de inicialização no Windows |
+| `iniciar.sh` | atalho de inicialização no Linux/macOS |
 
 ## API
 

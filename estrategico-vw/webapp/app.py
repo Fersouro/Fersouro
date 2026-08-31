@@ -19,6 +19,7 @@ import argparse
 import json
 import mimetypes
 import socket
+import sys
 import threading
 import time
 import uuid
@@ -415,7 +416,22 @@ def ip_local() -> str:
         s.close()
 
 
+def preparar_console():
+    """
+    Evita UnicodeEncodeError no console do Windows.
+
+    O terminal do Windows costuma usar cp850/cp1252, que não tem alguns dos
+    caracteres das mensagens; sem isto o servidor quebraria ao imprimir.
+    """
+    for fluxo in (sys.stdout, sys.stderr):
+        try:
+            fluxo.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError):
+            pass
+
+
 def main():
+    preparar_console()
     parser = argparse.ArgumentParser(description="Consolidador Estratégico VW")
     parser.add_argument("--host", default="0.0.0.0",
                         help="endereço de escuta (padrão: 0.0.0.0, toda a rede)")
@@ -434,7 +450,7 @@ def main():
     if PLANILHA_PADRAO.exists():
         print(f"  planilha base: {PLANILHA_PADRAO.name}")
     else:
-        print("  planilha base: não encontrada — envie a Estratégico pela página")
+        print("  planilha base: nao encontrada - envie a Estrategico pela pagina")
     print("  sem autenticação: use apenas na rede interna. Ctrl+C para parar.")
 
     try:
