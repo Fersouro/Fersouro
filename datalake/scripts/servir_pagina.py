@@ -44,6 +44,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         super().do_GET()
 
+    def end_headers(self):
+        # A pagina e regerada a cada carga. Sem isso o navegador mostra a
+        # versao velha do cache e parece que "nada mudou".
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")
+        super().end_headers()
+
     def log_message(self, *a):
         pass  # silencioso
 
