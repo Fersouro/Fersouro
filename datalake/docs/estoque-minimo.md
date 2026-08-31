@@ -166,7 +166,9 @@ cargas do dia a dia não baixam — usam o que este script deixou.
 | Página não muda | cache do navegador | **Ctrl+F5**; conferir se o `.html` tem `LastWriteTime` recente |
 | Só aparece Revenda 1 | `minimos_pecas.csv` sem linhas `;2;` **ou** CSV corrompido (uma linha só) | reescrever o CSV via array/Bloco de Notas; conferir `read_csv` sem erro |
 | `read_csv_auto ... maximum line size` | CSV colado virou uma linha só | regravar o CSV com quebras de linha reais |
+| `ORA-00942` numa tabela com `filter` | tabela citada dentro do `filter` sem o schema | qualifique com `CNP.` no `ccm.yml` — o conector só qualifica a tabela do `FROM` principal |
 | 1 tabela falha na carga | ingestão de uma tabela | a automação usa `--keep-going` e segue; investigar a tabela no `saida-datalake.txt` |
+| Carga para no INGEST sem regerar a página | `C:\datalake\ATUALIZAR.bat` desatualizado (versão sem `--keep-going`) | rode `instalar_app.ps1`, que reescreve o `.bat` no servidor |
 | Carga não conecta no Oracle | rota `10.15.111.254:1521` caiu | problema de rede/TI; `scripts/diagnostico_rede.ps1` ajuda a apontar onde quebra |
 | Código velho após atualizar | cache do GitHub na hora do download | rode `instalar_app.ps1` de novo, ou fixe o commit com `-Ref <sha>` |
 
@@ -200,7 +202,13 @@ No servidor (`C:\datalake`):
 - ⏳ **Confirmar a Revenda 2 na lista de mínimos do servidor** — o CSV chegou a
   corromper num paste; a correção é gravar `C:\datalake\minimos_pecas.csv` com as
   20 linhas (10 por revenda) via array/Bloco de Notas e regerar.
-- ⏳ **1 tabela falha na carga** — sem impacto no estoque graças ao
-  `--keep-going`; convém identificar (no log) e ajustar o `ccm.yml`.
+- ✅ **A tabela que falhava na carga foi corrigida** (31/08/2026).
+  Era a `FAT_MOVIMENTO_ITEM`, com `ORA-00942: table or view does not exist`.
+  Causa: o conector qualifica com o schema apenas a tabela do `FROM` principal;
+  o texto do `filter` entra verbatim no SQL, e a subconsulta citava
+  `FAT_MOVIMENTO_CAPA` sem o `CNP.` — o Oracle procurava no schema do usuário da
+  conexão (`FERNANDO_DEV`), onde a tabela não existe. Depois do fix a carga fica
+  **11/11 tabelas**, e a `gold.margem_pecas` passa a ter dado de verdade.
+  **Regra que fica:** qualifique com `CNP.` toda tabela citada dentro de um `filter`.
 - 🔒 Segurança: a página não tem senha (uso interno). Não expor a porta na
   internet. As credenciais do Oracle ficam no `.env` (fora do Git).
