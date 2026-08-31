@@ -65,6 +65,9 @@ $bat = (Get-ChildItem $App -Recurse -Filter "ATUALIZAR-DATALAKE.bat" | Select-Ob
 if ($bat) { Copy-Item $bat (Join-Path $LakeRoot "ATUALIZAR.bat") -Force; Ok "ATUALIZAR.bat atualizado" }
 $srv = (Get-ChildItem $App -Recurse -Filter "servir_pagina.py" | Select-Object -First 1).FullName
 if ($srv) { Copy-Item $srv (Join-Path $LakeRoot "servir_pagina.py") -Force; Ok "servir_pagina.py atualizado" }
+# o proprio instalador, para rodar de novo facil no futuro
+$eu = (Get-ChildItem $App -Recurse -Filter "instalar_app.ps1" | Select-Object -First 1).FullName
+if ($eu) { Copy-Item $eu (Join-Path $LakeRoot "instalar_app.ps1") -Force; Ok "instalar_app.ps1 disponivel em $LakeRoot" }
 
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Green
