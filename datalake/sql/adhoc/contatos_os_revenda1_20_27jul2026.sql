@@ -7,6 +7,10 @@
 --   setup_windows.ps1 -Sql "..." -SourceName ccm -LakeRoot C:\datalake
 -- (precisa de acesso a rede interna e usuario datalake_ro -- este ambiente
 -- remoto nao alcanca essa rede).
+--
+-- ATENCAO: qualifique com CNP. as tabelas -- o usuario de conexao (ex.:
+-- FERNANDO_DEV) nao e o dono delas; sem o schema o Oracle procura no schema
+-- do usuario da conexao e devolve ORA-00942.
 SELECT
     fmc.REVENDA,
     fmc.NUMERO_NOTA_FISCAL,
@@ -18,10 +22,10 @@ SELECT
     fc.TELEFONE,
     fc.DDD_CELULAR,
     fc.CELULAR
-FROM FAT_CLIENTE fc
-INNER JOIN FAT_MOVIMENTO_CAPA fmc
+FROM CNP.FAT_CLIENTE fc
+INNER JOIN CNP.FAT_MOVIMENTO_CAPA fmc
         ON fc.CLIENTE = fmc.CLIENTE
-LEFT JOIN OFI_ORDEM_SERVICO oos
+LEFT JOIN CNP.OFI_ORDEM_SERVICO oos
        ON fmc.CONTATO = oos.CONTATO
 WHERE fmc.TIPO_TRANSACAO = 'O21'
   AND fmc.REVENDA = 1
