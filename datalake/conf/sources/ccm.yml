@@ -165,3 +165,16 @@ tables:
     load_mode: full
     quality:
       row_count_min: 1
+
+  # ------------------------------------------------ faturamento da oficina
+  # Ficha de movimento: liga a OS as notas de peca que sairam nela.
+  - name: OFI_FICHA_MOVIMENTO
+    load_mode: full
+    quality:
+      row_count_min: 1
+
+  # Servicos lancados na OS (mao de obra), com quantidade, valor e desconto.
+  - name: OFI_SERVICO_OS
+    load_mode: full
+    quality:
+      row_count_min: 1

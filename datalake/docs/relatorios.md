@@ -233,6 +233,7 @@ uma linha por aba com o que ela mostra e quantas linhas tem. É o que responde
 | `30_veiculos_usados_custeio.yml` | Veiculos-Usados-Custeio | Data inicial, Data final, Revenda |
 | `40_venda_direta_custeio.yml` | Venda-Direta-Custeio | Data inicial, Data final, Revenda |
 | `50_balcao_pecas_faturamento.yml` | Balcao-Pecas-Faturamento | Data inicial, Data final, Revenda |
+| `60_oficina_faturamento.yml` | Oficina-Faturamento | Data inicial, Data final, Revenda |
 
 Em todos, o período é a **data de aprovação do financeiro** (nos de custeio) ou
 a **data de entrada/saída** (nos de faturamento), e Revenda oferece 1, 2 ou
@@ -309,7 +310,26 @@ modelo: cada consulta pivota a sua lista, e a lista muda com o tempo.
 > Aqui as duas grafias caem na mesma coluna. Se no ERP só existir uma delas, o
 > resultado é o mesmo; se existirem as duas, agora somam na coluna certa.
 
-## 10. Solução de problemas
+## 10. Oficina-Faturamento: o que mudou da consulta original
+
+O modelo `oficina_os_faturamento` tem grão de **ordem de serviço**, com peças e
+serviços na mesma linha. O original era um `UNION` de dois selects (um só de
+peça, outro só de serviço) agrupado por OS; aqui os dois lados são CTEs ligados
+por `(empresa, revenda, nro_os)` — mesma conta, escrita de forma direta.
+
+1. **Sem intervalo fixo.** O original comparava o *mês corrente* das quatro
+   datas de fim (externo, garantia, revisão, encerramento). As quatro viraram
+   coluna, e o relatório aplica o mesmo critério — **a OS entra se qualquer uma
+   delas cair no período escolhido**.
+2. **A franquia entra por `max`** em vez de `sum(distinct ...)`. No grão de OS
+   as duas dão o mesmo número (há um único valor de franquia por OS), e `max`
+   diz isso explicitamente; `sum(distinct)` era defesa contra a multiplicação de
+   linhas do join, que aqui não existe.
+3. **OS sem peça e sem serviço não aparece** — como no original, onde os dois
+   lados do `UNION` eram `INNER JOIN`. Isso importa para `qtde_passagens`, que
+   conta OS.
+
+## 11. Solução de problemas
 
 | Sintoma | Causa | O que fazer |
 |---|---|---|
@@ -325,7 +345,7 @@ modelo: cada consulta pivota a sua lista, e a lista muda com o tempo.
 
 ---
 
-## 11. Onde está o código
+## 12. Onde está o código
 
 - `src/datalake/report.py` — leitura do YAML, parâmetros, execução, escrita do xlsx.
 - `sql/gold/60_margem_pecas.sql` — grão de **dia** (era mês), para o filtro de
