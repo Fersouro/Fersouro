@@ -451,3 +451,39 @@ sheets:
     assert resultado.status == "success"
     capa = [c.value for linha in load_workbook(resultado.path)["Capa"].iter_rows() for c in linha]
     assert "01/01/2026" in capa and "31/01/2026" in capa
+
+
+def test_historico_de_estoque_vira_view(project, settings, tmp_path):
+    """O ERP so tem o saldo de agora; o historico diario e a unica serie que existe."""
+    import duckdb
+
+    from datalake.duck import connect
+    from datalake.report import register_history_views
+
+    pasta = settings.root / "historico_estoque"
+    pasta.mkdir(parents=True)
+    escritor = duckdb.connect()
+    escritor.execute(
+        "CREATE TABLE s(data DATE, revenda INTEGER, codigo VARCHAR, disponivel DOUBLE)"
+    )
+    escritor.execute("INSERT INTO s VALUES ('2026-09-08', 1, 'X', 5)")
+    escritor.execute(f"COPY s TO '{pasta / '2026-09-08.parquet'}' (FORMAT PARQUET)")
+    escritor.close()
+
+    con = connect(settings)
+    try:
+        assert register_history_views(con, settings) == ["historico_estoque"]
+        assert con.execute("SELECT disponivel FROM historico_estoque").fetchone()[0] == 5
+    finally:
+        con.close()
+
+
+def test_sem_historico_nao_registra_nada(settings):
+    from datalake.duck import connect
+    from datalake.report import register_history_views
+
+    con = connect(settings)
+    try:
+        assert register_history_views(con, settings) == []
+    finally:
+        con.close()

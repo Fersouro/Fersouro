@@ -209,14 +209,27 @@ uma linha por aba com o que ela mostra e quantas linhas tem. É o que responde
 
 ## 7. Relatórios que já existem
 
-| Arquivo | Relatório | Abas |
+| Arquivo | Relatório | Campos |
 |---|---|---|
-| `10_margem_pecas.yml` | Margem de Peças | Mês atual, Últimos 12 meses, Detalhe |
-| `20_ordens_servico.yml` | Ordens de Serviço | Por loja e departamento, Por fonte pagadora, OS do mês |
-| `30_estoque_pecas.yml` | Estoque de Peças | Resumo por revenda, Maior valor parado, Zerados com reserva |
-| `40_funilaria_faturamento.yml` | Funilaria - Faturamento | Faturamento (uma aba) |
-| `41_funilaria_notas.yml` | Funilaria - Notas do período | Notas (uma aba) |
-| `90_vendas_demo.yml` | Vendas (demonstração) | Mensal por UF, Detalhe |
+| `10_pecas_margem.yml` | Peças - Margem | Data inicial, Data final, Departamento |
+| `11_pecas_margem_mensal.yml` | Peças - Margem por mês | Data inicial, Data final, Departamento |
+| `20_oficina_producao.yml` | Oficina - Produção | Data inicial, Data final, Departamento |
+| `21_oficina_os.yml` | Oficina - OS do período | Data inicial, Data final, Departamento |
+| `30_pecas_estoque_data.yml` | Peças - Estoque na data | Data, Revenda |
+| `31_pecas_estoque_agora.yml` | Peças - Estoque agora | Revenda |
+| `40_funilaria_faturamento.yml` | Funilaria - Faturamento | Data inicial, Data final, Departamento, Empresa, Revenda |
+| `41_funilaria_notas.yml` | Funilaria - Notas do período | Data inicial, Data final, Departamento |
+| `90_vendas_demo.yml` | Vendas (demonstração) | Data inicial, Data final |
+
+**Uma consulta, um relatório, uma aba.** Cada item da tela responde a uma
+pergunta só; o detalhe de um resumo é um relatório separado, não uma aba extra.
+
+**Todo relatório tem data**, com uma exceção declarada: *Peças - Estoque agora*
+é a foto do ERP na última carga — o ERP não guarda saldo de dias passados. Para
+uma data no passado existe *Peças - Estoque na data*, que lê os **snapshots
+diários** que a página de Estoque Mínimo grava em
+`<lake>/historico_estoque/AAAA-MM-DD.parquet` (registrados como a view
+`historico_estoque`). Esse histórico vale a partir do primeiro dia registrado.
 
 O `90_vendas_demo.yml` só funciona na base fictícia do `make demo`; num lake
 ligado ao ERP ele aparece como `skipped`.
@@ -274,6 +287,9 @@ da tela corresponde a uma pergunta só.
 ## 10. Onde está o código
 
 - `src/datalake/report.py` — leitura do YAML, parâmetros, execução, escrita do xlsx.
+- `sql/gold/60_margem_pecas.sql` — grão de **dia** (era mês), para o filtro de
+  período funcionar de verdade. Somar os dias de um mês dá exatamente o total
+  mensal de antes; as porcentagens saem do relatório, sobre a soma do período.
 - `scripts/servir_pagina.py` — a página `/gerar` e a chamada do `datalake report`.
 - `conf/reports/*.yml` — as definições.
 - `tests/test_report.py` — testes (inferência de formato, capa, totais, destaque).

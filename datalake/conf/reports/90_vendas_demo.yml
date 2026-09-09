@@ -8,17 +8,22 @@ description: >-
   num lake ligado ao ERP este relatorio aparece como 'skipped'.
 
 parameters:
-  - name: competencia
-    label: Competencia
-    type: mes
-    default: atual
+  - name: data_inicial
+    label: Data inicial
+    type: data
+    default: inicio-do-mes
+  - name: data_final
+    label: Data final
+    type: data
+    default: fim-do-mes
 
 sheets:
   - name: Mensal por UF
-    description: Pedidos, itens e valor vendido por mes e estado, ate a competencia.
+    description: Pedidos, itens e valor vendido por mes e estado, no periodo escolhido.
     sql: |
       SELECT * FROM vendas_mensais_uf
-       WHERE competencia <= $competencia
+       WHERE competencia BETWEEN date_trunc('month', $data_inicial)
+                             AND date_trunc('month', $data_final)
        ORDER BY competencia DESC, vlr_vendido DESC
     totals: [qtd_pedidos, qtd_itens, vlr_vendido]
     formats:
@@ -26,10 +31,10 @@ sheets:
       ticket_medio_item: moeda
 
   - name: Detalhe
-    description: Itens de pedido da competencia escolhida.
+    description: Itens de pedido do periodo escolhido.
     sql: |
       SELECT * FROM fato_vendas
-       WHERE competencia = $competencia
+       WHERE dt_pedido BETWEEN $data_inicial AND $data_final
        ORDER BY dt_pedido DESC, id_pedido
     formats:
       vlr_item: moeda

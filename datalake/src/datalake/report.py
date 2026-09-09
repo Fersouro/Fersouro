@@ -353,6 +353,24 @@ def load_reports(settings: Settings) -> list[ReportConfig]:
     return relatorios
 
 
+def register_history_views(con, settings: Settings) -> list[str]:
+    """Registra o historico diario de estoque, se existir.
+
+    Os snapshots que a pagina de Estoque Minimo grava
+    (<lake>/historico_estoque/AAAA-MM-DD.parquet, com a coluna 'data') sao a
+    unica serie temporal de saldo que existe: o ERP so guarda o saldo de agora.
+    Registrando aqui, um relatorio pode perguntar "como estava em tal dia".
+    """
+    pasta = settings.root / "historico_estoque"
+    if not pasta.is_dir() or not any(pasta.glob("*.parquet")):
+        return []
+    relation = f"read_parquet({quote_literal(str(pasta / '*.parquet'))})"
+    con.execute(
+        f"CREATE OR REPLACE VIEW {quote('historico_estoque')} AS SELECT * FROM {relation}"
+    )
+    return ["historico_estoque"]
+
+
 def register_gold_views(con, settings: Settings) -> list[str]:
     """Cria uma view por modelo gold materializado."""
     nomes: list[str] = []
@@ -693,6 +711,7 @@ def build_all(
     try:
         register_silver_views(con, settings)
         register_gold_views(con, settings)
+        register_history_views(con, settings)
         return [build_report(settings, r, con, destino, valores) for r in relatorios]
     finally:
         con.close()
