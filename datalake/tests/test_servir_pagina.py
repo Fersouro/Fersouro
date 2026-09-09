@@ -83,3 +83,87 @@ def test_certificado_gera_par_de_arquivos_legiveis(tmp_path):
     assert cert.read_bytes().startswith(b"-----BEGIN CERTIFICATE-----")
     assert b"PRIVATE KEY" in chave.read_bytes()
     assert servir.contexto_tls(cert, chave) is not None      # o ssl aceita o par
+
+
+# ------------------------------------------------------------------- login
+
+
+def test_senha_gravada_com_hash_e_sal_unico(tmp_path):
+    """A senha nunca vai em claro para o arquivo, e dois usuarios com a mesma
+    senha tem hash diferente."""
+    arquivo = tmp_path / "usuarios.json"
+    servir.gravar_usuario(arquivo, "Fernando", "senha-boa")
+    servir.gravar_usuario(arquivo, "maria", "senha-boa")
+
+    bruto = arquivo.read_text(encoding="utf-8")
+    assert "senha-boa" not in bruto
+
+    usuarios = servir.carregar_usuarios(arquivo)
+    assert set(usuarios) == {"fernando", "maria"}          # nome normalizado
+    assert usuarios["fernando"]["sal"] != usuarios["maria"]["sal"]
+    assert usuarios["fernando"]["hash"] != usuarios["maria"]["hash"]
+
+
+def test_senha_confere_so_com_a_senha_certa(tmp_path):
+    arquivo = tmp_path / "usuarios.json"
+    servir.gravar_usuario(arquivo, "fernando", "senha-boa")
+    registro = servir.carregar_usuarios(arquivo)["fernando"]
+    assert servir.senha_confere(registro, "senha-boa")
+    assert not servir.senha_confere(registro, "senha-boA")
+    assert not servir.senha_confere(registro, "")
+
+
+def test_registro_corrompido_nao_deixa_entrar():
+    assert not servir.senha_confere({}, "qualquer")
+    assert not servir.senha_confere({"sal": "zz", "hash": "x"}, "qualquer")
+
+
+def test_arquivo_de_usuarios_ausente_ou_quebrado(tmp_path):
+    assert servir.carregar_usuarios(tmp_path / "nao_existe.json") == {}
+    quebrado = tmp_path / "u.json"
+    quebrado.write_text("{isso nao e json", encoding="utf-8")
+    assert servir.carregar_usuarios(quebrado) == {}
+
+
+def test_sessao_vale_ate_expirar():
+    sessoes = servir.Sessoes()
+    token = sessoes.criar("fernando")
+    assert sessoes.usuario(token) == "fernando"
+    assert sessoes.usuario("token-inventado") is None
+    assert sessoes.usuario(None) is None
+
+    sessoes.encerrar(token)
+    assert sessoes.usuario(token) is None      # sair invalida no servidor
+
+
+def test_sessao_expirada_nao_vale():
+    sessoes = servir.Sessoes(horas=0)
+    assert sessoes.usuario(sessoes.criar("fernando")) is None
+
+
+def test_bloqueio_depois_de_cinco_falhas():
+    sessoes = servir.Sessoes()
+    for _ in range(servir.MAX_TENTATIVAS - 1):
+        sessoes.registrar_falha("10.0.0.9")
+    assert not sessoes.bloqueado("10.0.0.9")
+    sessoes.registrar_falha("10.0.0.9")
+    assert sessoes.bloqueado("10.0.0.9")
+    assert not sessoes.bloqueado("10.0.0.10")      # bloqueio e por IP
+
+    sessoes.limpar_falhas("10.0.0.9")              # acertou a senha, zera
+    assert not sessoes.bloqueado("10.0.0.9")
+
+
+def test_destino_do_login_nao_sai_do_servidor():
+    """'//site.externo' num redirect depois do login vira phishing."""
+    seguro = servir.Handler._destino_seguro
+    assert seguro(None, "/relatorios/") == "/relatorios/"
+    assert seguro(None, "//evil.com") == "/"
+    assert seguro(None, "https://evil.com") == "/"
+    assert seguro(None, "") == "/"
+
+
+def test_pagina_de_login_nao_vaza_html_do_erro():
+    corpo = servir.pagina_login("/", "<script>alerta()</script>")
+    assert "<script>alerta()</script>" not in corpo
+    assert "&lt;script&gt;" in corpo

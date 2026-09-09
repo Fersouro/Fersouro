@@ -110,6 +110,26 @@ momento, então dias anteriores ao início não existem.
 - Somente **rede interna (LAN)** — não é acesso externo; para ver de fora, use
   VPN, não abra a porta na internet.
 
+### Login
+O acesso pede **usuário e senha** — a pasta `export` tem margem, faturamento e
+estoque, e sem login qualquer máquina da rede baixa tudo. A tela é a mesma
+"Relatórios Tterrasul" de sempre.
+
+- Usuários ficam em `C:\datalake\usuarios.json`, com a senha em **hash PBKDF2**
+  (240 mil iterações, sal por usuário). A senha em claro não é gravada em lugar
+  nenhum.
+- Cadastrar (ou trocar a senha de) alguém:
+  ```
+  python C:\datalake\servir_pagina.py --criar-usuario fernando
+  ```
+  A senha é pedida no prompt — nunca vai por argumento, que apareceria na lista
+  de processos e no histórico do PowerShell.
+- **Esqueceu a senha?** Rode o mesmo comando com o mesmo nome: ele regrava.
+- As sessões vivem na memória e duram 12 h. Reiniciou o serviço, todo mundo
+  entra de novo.
+- Cinco senhas erradas do mesmo IP bloqueiam novas tentativas por 5 minutos.
+- Para voltar ao acesso aberto (não recomendado): `-SemLogin` no instalador.
+
 ### O certificado
 Autoassinado, gerado sozinho na primeira execução em
 `C:\datalake\cert\servidor.pem` (validade de 10 anos). Ele cobre o nome da
@@ -123,8 +143,10 @@ máquinas (dá para distribuir por GPO).
 
 Instalar/reinstalar o serviço (PowerShell como Administrador):
 ```
-powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\instalar_servidor.ps1 -Escuta 192.168.78.6
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\instalar_servidor.ps1 -Escuta 192.168.78.6 -Usuario fernando
 ```
+Ele pede a senha do usuário na hora, gera o certificado, libera o firewall e
+registra a tarefa.
 Volta ao HTTP antigo com `-Http`; muda a porta com `-Porta`.
 
 Reiniciar o servidor:
@@ -189,6 +211,10 @@ cargas do dia a dia não baixam — usam o que este script deixou.
 | `ERR_SSL_PROTOCOL_ERROR` | acessou `https://` numa porta servida sem TLS (ou vice-versa) | confira a porta: 8443 é HTTPS, 8080 só redireciona |
 | Serviço não sobe na 8443 | porta ocupada por outro programa | `netstat -ano \| findstr :8443`; use `-Porta` diferente ou libere a porta |
 | `Nao consegui gerar o certificado` | falta o pacote `cryptography` no Python do serviço | `python -m pip install cryptography` e reinicie a tarefa |
+| Serviço não sobe: `Nenhum usuario cadastrado` | ninguém foi cadastrado ainda | `python C:\datalake\servir_pagina.py --criar-usuario <nome>` |
+| Esqueceu a senha | — | rode o `--criar-usuario` com o mesmo nome; ele regrava |
+| "Muitas tentativas. Espere alguns minutos." | 5 senhas erradas do mesmo IP | espere 5 minutos, ou reinicie a tarefa (zera o contador) |
+| Todo mundo caiu para a tela de login | o serviço reiniciou (sessões vivem na memória) | é esperado; basta entrar de novo |
 | Só aparece Revenda 1 | `minimos_pecas.csv` sem linhas `;2;` **ou** CSV corrompido (uma linha só) | reescrever o CSV via array/Bloco de Notas; conferir `read_csv` sem erro |
 | `read_csv_auto ... maximum line size` | CSV colado virou uma linha só | regravar o CSV com quebras de linha reais |
 | `ORA-00942` numa tabela com `filter` | tabela citada dentro do `filter` sem o schema | qualifique com `CNP.` no `ccm.yml` — o conector só qualifica a tabela do `FROM` principal |
@@ -216,6 +242,7 @@ No servidor (`C:\datalake`):
 - `lake.duckdb` — catálogo. `silver/`, `gold/`, `export/` — dados e saídas.
 - `export/relatorios/` — planilhas geradas pela camada de relatórios.
 - `cert/servidor.pem` e `cert/servidor.key` — certificado do HTTPS (autoassinado).
+- `usuarios.json` — quem pode entrar (senha em hash). Restrinja a ACL desse arquivo.
 - `minimos_pecas.csv` — lista de mínimos (editável pela equipe).
 - `historico_estoque/AAAA-MM-DD.parquet` — snapshots diários.
 - `app/` — projeto fixo (código). `ATUALIZAR.bat`, `instalar_app.ps1`,

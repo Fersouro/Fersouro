@@ -14,7 +14,13 @@
     powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\instalar_servidor.ps1
     ... -Escuta 192.168.78.6            # so nessa placa de rede
     ... -Porta 8443 -PortaAntiga 8080   # padrao: HTTPS na 8443, 8080 redireciona
+    ... -Usuario fernando               # cadastra quem pode entrar (pede a senha)
     ... -Http                           # sem TLS, como era antes
+    ... -SemLogin                        # servir sem senha (nao recomendado)
+
+  O acesso pede usuario e senha (a pasta export tem margem e faturamento). O
+  primeiro usuario e cadastrado aqui; os demais, com:
+    python C:\datalake\servir_pagina.py --criar-usuario <nome>
 
   O certificado e autoassinado: o navegador avisa na primeira visita. Para
   tirar o aviso, instale C:\datalake\cert\servidor.pem como "Autoridade de
@@ -27,6 +33,8 @@ param(
     [int]$Porta = 8443,
     [int]$PortaAntiga = 8080,
     [string]$Escuta = "0.0.0.0",
+    [string]$Usuario = "",
+    [switch]$SemLogin,
     [switch]$Http,
     [string]$Pasta = "C:\datalake\export",
     [string]$Destino = "C:\datalake\servir_pagina.py"
@@ -94,6 +102,29 @@ if (-not $Http) {
     Ok "cryptography disponivel"
 }
 
+# --- 2b. usuarios do portal ----------------------------------------------
+$arqUsuarios = Join-Path (Split-Path $Pasta -Parent) "usuarios.json"
+if ($SemLogin) {
+    Write-Host "  ATENCAO: -SemLogin -- qualquer maquina da rede baixa as planilhas." -ForegroundColor Yellow
+} else {
+    if ($Usuario) {
+        Info "Cadastrando o usuario '$Usuario'"
+        & $py $Destino --criar-usuario $Usuario --pasta $Pasta
+        if ($LASTEXITCODE -ne 0) { Write-Host "Cadastro cancelado." -ForegroundColor Red; exit 1 }
+    } elseif (-not (Test-Path $arqUsuarios)) {
+        Info "Nenhum usuario cadastrado ainda -- vamos criar o primeiro"
+        $novo = Read-Host "    Nome de usuario (ex.: fernando)"
+        if ([string]::IsNullOrWhiteSpace($novo)) {
+            Write-Host "Sem usuario o servidor nao sobe. Rode de novo com -Usuario <nome>," -ForegroundColor Red
+            Write-Host "ou com -SemLogin para servir sem senha." -ForegroundColor Red
+            exit 1
+        }
+        & $py $Destino --criar-usuario $novo --pasta $Pasta
+        if ($LASTEXITCODE -ne 0) { Write-Host "Cadastro cancelado." -ForegroundColor Red; exit 1 }
+    }
+    Ok "usuarios em $arqUsuarios"
+}
+
 # --- 3. firewall ----------------------------------------------------------
 $portas = @($Porta)
 if (-not $Http -and $PortaAntiga -gt 0 -and $PortaAntiga -ne $Porta) { $portas += $PortaAntiga }
@@ -108,6 +139,7 @@ foreach ($pt in $portas) {
 # --- 4. tarefa agendada na inicializacao ----------------------------------
 Info "Registrando a Tarefa Agendada (inicializacao, conta SYSTEM)"
 $argumentos = "`"$Destino`" --porta $Porta --pasta `"$Pasta`" --host $Escuta"
+if ($SemLogin) { $argumentos += " --sem-login" }
 if ($Http) {
     $argumentos += " --http"
 } elseif ($PortaAntiga -gt 0 -and $PortaAntiga -ne $Porta) {
@@ -151,6 +183,10 @@ if (-not $Http) {
     }
     Write-Host "  Certificado autoassinado: o navegador avisa na primeira visita."
     Write-Host "  Para tirar o aviso, instale C:\datalake\cert\servidor.pem como raiz confiavel."
+}
+if (-not $SemLogin) {
+    Write-Host "  A pagina pede usuario e senha. Para cadastrar mais gente:"
+    Write-Host ("    {0} {1} --criar-usuario <nome>" -f $py, $Destino)
 }
 Write-Host "  (se a pagina abrir vazia, rode uma carga para gerar o estoque_minimo.html)"
 Write-Host "============================================================" -ForegroundColor Green
