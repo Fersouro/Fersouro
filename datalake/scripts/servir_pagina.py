@@ -11,6 +11,7 @@ arquivo pelo compartilhamento.
     python servir_pagina.py --porta 8443 --pasta C:\\datalake\\export
     python servir_pagina.py --http 8080              # como era antes, sem TLS
     python servir_pagina.py --criar-usuario fernando # cadastra quem pode entrar
+    python servir_pagina.py --verificar-senha fernando  # confere a senha sem navegador
 
 O acesso pede usuario e senha: a pasta export tem margem e faturamento, e sem
 login qualquer maquina da rede baixa tudo. As senhas ficam com hash pbkdf2 em
@@ -240,6 +241,37 @@ def senha_confere(registro, senha):
     return hmac.compare_digest(_hash_senha(senha, sal, iteracoes), esperado)
 
 
+class ArquivoUsuarios:
+    """Le o usuarios.json sempre que ele muda.
+
+    O servidor carregava a lista uma vez, na subida. Quem cadastrasse alguem
+    depois -- que e o que a propria tela manda fazer -- so entrava depois de
+    reiniciar o servico, e o sintoma era "usuario ou senha invalidos" com a
+    senha certa.
+    """
+
+    def __init__(self, caminho):
+        self.caminho = caminho
+        self._cache = {}
+        self._assinatura = object()      # forca a primeira leitura
+        self._lock = threading.Lock()
+
+    def atuais(self):
+        try:
+            st = os.stat(self.caminho)
+            assinatura = (st.st_mtime_ns, st.st_size)
+        except OSError:
+            assinatura = None
+        with self._lock:
+            if assinatura != self._assinatura:
+                self._cache = carregar_usuarios(self.caminho)
+                self._assinatura = assinatura
+            return self._cache
+
+    def __len__(self):
+        return len(self.atuais())
+
+
 class Sessoes:
     """Sessoes e tentativas de login, protegidas por lock (o servidor e threaded)."""
 
@@ -411,7 +443,7 @@ def pagina_painel(usuario, pasta):
 class Handler(http.server.SimpleHTTPRequestHandler):
     """Serve a pasta export -- so para quem entrou com usuario e senha."""
 
-    usuarios = {}
+    usuarios = None          # ArquivoUsuarios
     sessoes = None
     exige_login = True
 
@@ -496,7 +528,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         senha = (campos.get("senha") or [""])[0]
         proximo = self._destino_seguro((campos.get("proximo") or ["/"])[0])
 
-        registro = self.usuarios.get(nome)
+        registro = self.usuarios.atuais().get(nome)
         if not registro or not senha_confere(registro, senha):
             self.sessoes.registrar_falha(ip)
             time.sleep(1)          # tira a graca de tentar senha em massa
@@ -559,6 +591,7 @@ def parse_args(argv):
         "host": "0.0.0.0", "porta": None, "pasta": None, "tls": True,
         "cert": None, "chave": None, "redirecionar_de": PORTA_HTTP,
         "usuarios": None, "sem_login": False, "criar_usuario": None,
+        "verificar_senha": None,
     }
     # A Tarefa Agendada antiga chama "servir_pagina.py 8080 C:\datalake\export".
     # Se ela continuar valendo depois de uma atualizacao de codigo, tem que
@@ -592,6 +625,8 @@ def parse_args(argv):
             opcoes["usuarios"] = proximo; i += 2
         elif a == "--criar-usuario":
             opcoes["criar_usuario"] = proximo; i += 2
+        elif a == "--verificar-senha":
+            opcoes["verificar_senha"] = proximo; i += 2
         elif a == "--sem-login":
             opcoes["sem_login"] = True; i += 1
         elif a == "--sem-redirecionar":
@@ -628,6 +663,24 @@ def criar_usuario(caminho, nome):
     return 0
 
 
+def verificar_senha_interativo(caminho, nome):
+    """Diz se a senha confere, sem precisar do navegador -- para quando o login
+    recusa e nao esta claro se o problema e a senha, o usuario ou o servico."""
+    usuarios = carregar_usuarios(caminho)
+    chave = nome.strip().lower()
+    print("Arquivo:", caminho)
+    print("Cadastrados:", ", ".join(sorted(usuarios)) or "(nenhum)")
+    if chave not in usuarios:
+        print("O usuario '%s' NAO existe nesse arquivo." % chave)
+        return 1
+    if senha_confere(usuarios[chave], getpass.getpass("Senha de '%s': " % chave)):
+        print("A senha CONFERE. Se o navegador recusa, o servico esta lendo")
+        print("outro arquivo de usuarios -- confira o --pasta da tarefa agendada.")
+        return 0
+    print("A senha NAO confere. Regrave com: --criar-usuario %s" % chave)
+    return 1
+
+
 def main():
     opcoes = parse_args(sys.argv[1:])
     if opcoes is None:
@@ -641,12 +694,15 @@ def main():
     if opcoes["criar_usuario"]:
         return criar_usuario(arquivo_usuarios, opcoes["criar_usuario"])
 
+    if opcoes["verificar_senha"]:
+        return verificar_senha_interativo(arquivo_usuarios, opcoes["verificar_senha"])
+
     if not os.path.isdir(pasta):
         print("Pasta nao existe:", pasta)
         return 1
 
-    usuarios = {} if opcoes["sem_login"] else carregar_usuarios(arquivo_usuarios)
-    if not opcoes["sem_login"] and not usuarios:
+    usuarios = ArquivoUsuarios(arquivo_usuarios)
+    if not opcoes["sem_login"] and not usuarios.atuais():
         print("Nenhum usuario cadastrado em", arquivo_usuarios)
         print("")
         print("Crie o primeiro antes de subir o servidor:")
@@ -702,6 +758,7 @@ def main():
         else:
             print("Login exigido. Usuarios em %s (%d cadastrado(s))."
                   % (arquivo_usuarios, len(usuarios)))
+            print("Cadastrar alguem novo vale na hora, sem reiniciar o servico.")
         print("(Ctrl+C para parar)")
         try:
             httpd.serve_forever()

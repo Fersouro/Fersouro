@@ -125,6 +125,13 @@ estoque, e sem login qualquer máquina da rede baixa tudo. A tela é a mesma
   A senha é pedida no prompt — nunca vai por argumento, que apareceria na lista
   de processos e no histórico do PowerShell.
 - **Esqueceu a senha?** Rode o mesmo comando com o mesmo nome: ele regrava.
+- Cadastro e troca de senha **valem na hora** — o servidor relê o
+  `usuarios.json` quando o arquivo muda, sem reiniciar o serviço.
+- **O login recusa e você tem certeza da senha?** Confira sem navegador:
+  ```
+  python C:\datalake\servir_pagina.py --verificar-senha fernando
+  ```
+  Ele mostra o arquivo lido, quem está cadastrado e se a senha bate.
 - As sessões vivem na memória e duram 12 h. Reiniciou o serviço, todo mundo
   entra de novo.
 - Cinco senhas erradas do mesmo IP bloqueiam novas tentativas por 5 minutos.
@@ -222,6 +229,7 @@ cargas do dia a dia não baixam — usam o que este script deixou.
 | Esqueceu a senha | — | rode o `--criar-usuario` com o mesmo nome; ele regrava |
 | "Muitas tentativas. Espere alguns minutos." | 5 senhas erradas do mesmo IP | espere 5 minutos, ou reinicie a tarefa (zera o contador) |
 | Todo mundo caiu para a tela de login | o serviço reiniciou (sessões vivem na memória) | é esperado; basta entrar de novo |
+| "Usuário ou senha inválidos" com a senha certa | até 09/09/2026 o serviço lia os usuários só na subida: quem fosse cadastrado depois não entrava | atualize o código (hoje a lista é relida sozinha); no código antigo, reinicie a tarefa depois de cadastrar |
 | Só aparece Revenda 1 | `minimos_pecas.csv` sem linhas `;2;` **ou** CSV corrompido (uma linha só) | reescrever o CSV via array/Bloco de Notas; conferir `read_csv` sem erro |
 | `read_csv_auto ... maximum line size` | CSV colado virou uma linha só | regravar o CSV com quebras de linha reais |
 | `ORA-00942` numa tabela com `filter` | tabela citada dentro do `filter` sem o schema | qualifique com `CNP.` no `ccm.yml` — o conector só qualifica a tabela do `FROM` principal |

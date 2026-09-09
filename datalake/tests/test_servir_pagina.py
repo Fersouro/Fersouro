@@ -167,3 +167,41 @@ def test_pagina_de_login_nao_vaza_html_do_erro():
     corpo = servir.pagina_login("/", "<script>alerta()</script>")
     assert "<script>alerta()</script>" not in corpo
     assert "&lt;script&gt;" in corpo
+
+
+def test_usuario_novo_vale_sem_reiniciar(tmp_path):
+    """Cadastrar alguem com o servico no ar tem que valer na hora.
+
+    Era o defeito de 09/09/2026: a lista era lida uma vez, na subida, e quem
+    fosse cadastrado depois recebia 'usuario ou senha invalidos' com a senha
+    certa.
+    """
+    arquivo = tmp_path / "usuarios.json"
+    servir.gravar_usuario(arquivo, "fernando", "senha-boa")
+
+    leitor = servir.ArquivoUsuarios(arquivo)
+    assert set(leitor.atuais()) == {"fernando"}
+
+    servir.gravar_usuario(arquivo, "maria", "outra-senha")
+    assert set(leitor.atuais()) == {"fernando", "maria"}      # sem reiniciar nada
+
+
+def test_troca_de_senha_vale_sem_reiniciar(tmp_path):
+    arquivo = tmp_path / "usuarios.json"
+    servir.gravar_usuario(arquivo, "fernando", "antiga")
+    leitor = servir.ArquivoUsuarios(arquivo)
+    assert servir.senha_confere(leitor.atuais()["fernando"], "antiga")
+
+    servir.gravar_usuario(arquivo, "fernando", "nova")
+    registro = leitor.atuais()["fernando"]
+    assert servir.senha_confere(registro, "nova")
+    assert not servir.senha_confere(registro, "antiga")
+
+
+def test_arquivo_de_usuarios_sumindo_nao_quebra(tmp_path):
+    arquivo = tmp_path / "usuarios.json"
+    servir.gravar_usuario(arquivo, "fernando", "senha-boa")
+    leitor = servir.ArquivoUsuarios(arquivo)
+    assert leitor.atuais()
+    arquivo.unlink()
+    assert leitor.atuais() == {}          # ninguem entra, mas o servidor segue de pe
