@@ -125,24 +125,30 @@ estoque, e sem login qualquer máquina da rede baixa tudo. A tela é a mesma
   (240 mil iterações, sal por usuário). A senha em claro não é gravada em lugar
   nenhum.
 - Cadastrar (ou trocar a senha de) alguém:
+  ```powershell
+  & "C:\Program Files\Python312\python.exe" "C:\datalake\servir_pagina.py" --criar-usuario fernando
   ```
-  python C:\datalake\servir_pagina.py --criar-usuario fernando
-  ```
+  > No PowerShell o **`&` na frente é obrigatório**: sem ele, uma linha que
+  > começa com aspas é tratada como texto e devolve `Token inesperado`. O
+  > caminho do Python tem espaço, então as aspas também são obrigatórias.
   A senha é pedida no prompt — nunca vai por argumento, que apareceria na lista
   de processos e no histórico do PowerShell.
 - **Esqueceu a senha?** Rode o mesmo comando com o mesmo nome: ele regrava.
 - Cadastro e troca de senha **valem na hora** — o servidor relê o
   `usuarios.json` quando o arquivo muda, sem reiniciar o serviço.
+- **Sem terminal:** `C:\datalake\CADASTRAR-USUARIO.bat` (duplo-clique) cadastra
+  ou troca senha, e `C:\datalake\DIAGNOSTICO-PAGINA.bat` roda o diagnóstico.
+  Existem como `.bat` porque no PowerShell a linha com aspas vira texto.
 - **O login recusa?** Rode o diagnóstico — ele diz quem está atendendo em cada
   porta, com que argumentos a tarefa sobe o servidor e quem está cadastrado:
-  ```
-  python C:\datalake\diagnostico_pagina.py
+  ```powershell
+  & "C:\Program Files\Python312\python.exe" "C:\datalake\diagnostico_pagina.py"
   ```
   O caso mais comum é a 8443 estar com **outro portal** (o de `C:\Python`), que
   tem a própria lista de usuários — aí o usuário criado aqui não entra lá.
 - **Confirmada a senha, sem navegador:**
-  ```
-  python C:\datalake\servir_pagina.py --verificar-senha fernando
+  ```powershell
+  & "C:\Program Files\Python312\python.exe" "C:\datalake\servir_pagina.py" --verificar-senha fernando
   ```
   Ele mostra o arquivo lido, quem está cadastrado e se a senha bate.
 - As sessões vivem na memória e duram 12 h. Reiniciou o serviço, todo mundo

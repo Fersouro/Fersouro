@@ -30,6 +30,15 @@ LAKE = r"C:\datalake" if os.name == "nt" else os.getcwd()
 TAREFA = "DatalakeEstoquePagina"
 
 
+def comando(script, *argumentos):
+    """Comando pronto para colar. No PowerShell falta o '&' na frente e o
+    caminho do Python (que tem espaco) precisa de aspas -- sem isso a linha
+    vira texto e devolve 'Token inesperado'."""
+    if os.name == "nt":
+        return '& "%s" "%s" %s' % (sys.executable, script, " ".join(argumentos))
+    return "%s %s %s" % (sys.executable, script, " ".join(argumentos))
+
+
 def titulo(texto):
     print("\n" + texto)
     print("-" * len(texto))
@@ -152,8 +161,9 @@ def main():
     lista = usuarios(caminho)
     if lista is None:
         print("  NAO EXISTE -- ninguem consegue entrar neste servidor.")
-        print("  Crie o primeiro:  python %s --criar-usuario <nome>"
-              % os.path.join(lake, "servir_pagina.py"))
+        print("  Crie o primeiro:")
+        print("   ", comando(os.path.join(lake, "servir_pagina.py"),
+                             "--criar-usuario", "<nome>"))
     elif isinstance(lista, str):
         print(" ", lista)
     elif not lista:
@@ -166,8 +176,8 @@ def main():
     if situacoes.get(8443) == "datalake":
         print("  A 8443 e o servidor do datalake. Se o login recusa, o problema e")
         print("  usuario ou senha -- confira com:")
-        print("    python %s --verificar-senha <usuario>"
-              % os.path.join(lake, "servir_pagina.py"))
+        print("   ", comando(os.path.join(lake, "servir_pagina.py"),
+                             "--verificar-senha", "<usuario>"))
     elif situacoes.get(8443) == "outro":
         print("  A 8443 NAO e o servidor do datalake: e outro portal, com a")
         print("  propria lista de usuarios. Por isso o usuario criado aqui nao entra la.")

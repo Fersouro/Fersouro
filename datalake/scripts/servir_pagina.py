@@ -203,6 +203,19 @@ def _hash_senha(senha, sal, iteracoes=ITERACOES):
     return hashlib.pbkdf2_hmac("sha256", senha.encode("utf-8"), sal, iteracoes).hex()
 
 
+def comando(script, *argumentos):
+    """Sugestao de comando pronta para colar no terminal de quem esta lendo.
+
+    No PowerShell, um comando que comeca com string entre aspas e tratado como
+    texto -- "C:\Program Files\...\python.exe" script.py devolve
+    'Token inesperado', nao roda nada. O '&' na frente e o que faz virar
+    comando, e o caminho do Python tem espaco, entao as aspas sao obrigatorias.
+    """
+    if os.name == "nt":
+        return '& "%s" "%s" %s' % (sys.executable, script, " ".join(argumentos))
+    return "%s %s %s" % (sys.executable, script, " ".join(argumentos))
+
+
 def carregar_usuarios(caminho):
     """Le o arquivo de usuarios. -> dict (vazio se nao existir)."""
     if not os.path.isfile(caminho):
@@ -998,7 +1011,8 @@ def verificar_senha_interativo(caminho, nome):
         print("A senha CONFERE. Se o navegador recusa, o servico esta lendo")
         print("outro arquivo de usuarios -- confira o --pasta da tarefa agendada.")
         return 0
-    print("A senha NAO confere. Regrave com: --criar-usuario %s" % chave)
+    print("A senha NAO confere. Regrave com:")
+    print("    " + comando(os.path.abspath(__file__), "--criar-usuario", chave))
     return 1
 
 
@@ -1027,7 +1041,7 @@ def main():
         print("Nenhum usuario cadastrado em", arquivo_usuarios)
         print("")
         print("Crie o primeiro antes de subir o servidor:")
-        print("    python servir_pagina.py --criar-usuario fernando")
+        print("    " + comando(os.path.abspath(__file__), "--criar-usuario", "fernando"))
         print("Ou, para servir sem senha (nao recomendado -- a pasta tem margem")
         print("e faturamento):  --sem-login")
         return 1

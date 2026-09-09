@@ -106,6 +106,12 @@ if ($srv) { Copy-Item $srv (Join-Path $LakeRoot "servir_pagina.py") -Force; Ok "
 # (-File C:\datalake\instalar_servidor.ps1) falha dizendo que o arquivo nao existe.
 $isv = (Get-ChildItem $App -Recurse -Filter "instalar_servidor.ps1" | Select-Object -First 1).FullName
 if ($isv) { Copy-Item $isv (Join-Path $LakeRoot "instalar_servidor.ps1") -Force; Ok "instalar_servidor.ps1 atualizado" }
+# atalhos de duplo-clique: no PowerShell o comando com aspas vira texto, e o
+# .bat tira essa armadilha do caminho de quem so quer cadastrar um usuario.
+foreach ($atalho in @("DIAGNOSTICO-PAGINA.bat", "CADASTRAR-USUARIO.bat")) {
+    $achado = (Get-ChildItem $App -Recurse -Filter $atalho | Select-Object -First 1).FullName
+    if ($achado) { Copy-Item $achado (Join-Path $LakeRoot $atalho) -Force; Ok "$atalho atualizado" }
+}
 # diagnostico da pagina: responde "quem atende na porta" quando o login recusa
 $dia = (Get-ChildItem $App -Recurse -Filter "diagnostico_pagina.py" | Select-Object -First 1).FullName
 if ($dia) { Copy-Item $dia (Join-Path $LakeRoot "diagnostico_pagina.py") -Force; Ok "diagnostico_pagina.py atualizado" }

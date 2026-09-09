@@ -20,7 +20,7 @@
 
   O acesso pede usuario e senha (a pasta export tem margem e faturamento). O
   primeiro usuario e cadastrado aqui; os demais, com:
-    python C:\datalake\servir_pagina.py --criar-usuario <nome>
+    & "C:\Program Files\Python312\python.exe" "C:\datalake\servir_pagina.py" --criar-usuario <nome>
 
   O certificado e autoassinado: o navegador avisa na primeira visita. Para
   tirar o aviso, instale C:\datalake\cert\servidor.pem como "Autoridade de
@@ -186,7 +186,9 @@ if (-not $Http) {
 }
 if (-not $SemLogin) {
     Write-Host "  A pagina pede usuario e senha. Para cadastrar mais gente:"
-    Write-Host ("    {0} {1} --criar-usuario <nome>" -f $py, $Destino)
+    # Com o '&' e as aspas: o caminho do Python tem espaco, e sem o '&' o
+    # PowerShell trata a linha como texto e devolve 'Token inesperado'.
+    Write-Host ("    & `"{0}`" `"{1}`" --criar-usuario <nome>" -f $py, $Destino)
 }
 Write-Host "  (se a pagina abrir vazia, rode uma carga para gerar o estoque_minimo.html)"
 Write-Host "============================================================" -ForegroundColor Green
