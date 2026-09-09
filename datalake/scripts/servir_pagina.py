@@ -387,6 +387,9 @@ td.n { text-align:right; color:#94a3b8; white-space:nowrap; }
 .campo input { margin-top:4px; padding:8px 10px; font-size:14px; }
 .campo.data input { width:120px; }
 .campo.curto input { width:110px; }
+.campo select { display:block; margin-top:4px; padding:8px 10px; font-size:14px;
+                border-radius:8px; border:1px solid #24314d; background:#0b1324;
+                color:#e2e8f0; min-width:170px; }
 .linha button { width:auto; margin-top:0; padding:10px 18px; white-space:nowrap; }
 .aviso { margin:12px 0; padding:10px 12px; border-radius:8px; background:#12331f;
          border:1px solid #14532d; color:#bbf7d0; font-size:14px; }
@@ -490,14 +493,29 @@ def pagina_gerador(usuario, relatorios, projeto, pronto=None, erro=None):
                         "numero": "número"}.get(tipo, "")
                 padrao = _padrao_visivel(tipo, parametro.get("default", ""))
                 opcional = " (opcional)" if parametro.get("optional") else ""
-                campos.append(
-                    "<label class='campo %s'>%s%s"
-                    "<input name='p_%s' value='%s' placeholder='%s' autocomplete='off'></label>"
-                    % ("data" if tipo == "data" else "curto",
-                       html.escape(parametro["label"]), opcional,
-                       html.escape(parametro["name"]), html.escape(str(padrao)),
-                       html.escape(dica))
-                )
+                if parametro.get("options"):
+                    escolhido = str(parametro.get("default") or "")
+                    opcoes = "".join(
+                        "<option value='%s'%s>%s</option>"
+                        % (html.escape(str(o.get("value") or "")),
+                           " selected" if str(o.get("value") or "") == escolhido else "",
+                           html.escape(str(o.get("label") or o.get("value") or "")))
+                        for o in parametro["options"]
+                    )
+                    campos.append(
+                        "<label class='campo escolha'>%s<select name='p_%s'>%s</select></label>"
+                        % (html.escape(parametro["label"]),
+                           html.escape(parametro["name"]), opcoes)
+                    )
+                else:
+                    campos.append(
+                        "<label class='campo %s'>%s%s"
+                        "<input name='p_%s' value='%s' placeholder='%s' autocomplete='off'></label>"
+                        % ("data" if tipo == "data" else "curto",
+                           html.escape(parametro["label"]), opcional,
+                           html.escape(parametro["name"]), html.escape(str(padrao)),
+                           html.escape(dica))
+                    )
             blocos.append(
                 """<form class="linha" method="post" action="/gerar">
                      <input type="hidden" name="relatorio" value="%s">
@@ -633,7 +651,51 @@ def python_do_projeto(projeto):
     return sys.executable
 
 
+_CACHE_RELATORIOS = {}
+_CACHE_SEGUNDOS = 30
+
+
 def relatorios_disponiveis(projeto):
+    """Os relatorios que a pagina oferece, com seus campos.
+
+    Pergunta ao proprio datalake ('report --list --json'), que e quem define o
+    formato -- assim um tipo novo de campo aparece na tela sem eu reescrever um
+    interpretador de YAML aqui. Se a chamada falhar (projeto quebrado, venv sem
+    dependencia), cai no leitor simples abaixo, que ao menos mostra os nomes.
+    """
+    if not projeto:
+        return []
+    agora = time.time()
+    guardado = _CACHE_RELATORIOS.get(projeto)
+    if guardado and agora - guardado[0] < _CACHE_SEGUNDOS:
+        return guardado[1]
+
+    dados = _relatorios_via_cli(projeto)
+    if dados is None:
+        dados = _relatorios_do_yaml(projeto)
+    _CACHE_RELATORIOS[projeto] = (agora, dados)
+    return dados
+
+
+def _relatorios_via_cli(projeto):
+    """-> lista de relatorios, ou None se a chamada nao funcionou."""
+    ambiente = dict(os.environ)
+    ambiente["PYTHONPATH"] = os.path.join(projeto, "src")
+    ambiente["PYTHONIOENCODING"] = "utf-8"
+    try:
+        saida = subprocess.run(
+            [python_do_projeto(projeto), "-m", "datalake.cli", "report", "--list", "--json"],
+            cwd=projeto, env=ambiente, timeout=60,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        )
+        if saida.returncode != 0:
+            return None
+        return json.loads(saida.stdout.decode("utf-8", "replace"))
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return None
+
+
+def _relatorios_do_yaml(projeto):
     """Le conf/reports/*.yml sem depender de biblioteca de YAML.
 
     O servico roda com o Python do sistema, que pode nao ter o pyyaml. Como so

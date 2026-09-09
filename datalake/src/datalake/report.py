@@ -114,9 +114,10 @@ class Parameter:
 
     name: str
     label: str
-    type: str = "texto"          # mes | data | numero | texto
+    type: str = "texto"          # mes | data | numero | texto | lista
     default: Any = None
     optional: bool = False
+    options: tuple[tuple[str, str], ...] = ()   # (valor, rotulo) do tipo 'lista'
 
     def resolve(self, bruto: Any) -> Any:
         """Converte o que veio do formulario (ou o default) para o tipo certo.
@@ -134,6 +135,18 @@ class Parameter:
             raise ValueError(f"parametro '{self.name}' ({self.label}) e obrigatorio")
 
         texto = str(bruto).strip()
+        if self.type == "lista":
+            validos = {v for v, _ in self.options}
+            if texto not in validos:
+                rotulos = ", ".join(f"{v} ({r})" for v, r in self.options)
+                raise ValueError(
+                    f"parametro '{self.name}': '{texto}' nao e uma opcao valida. "
+                    f"Escolha: {rotulos}"
+                )
+            try:                       # numero quando o valor e numero
+                return int(texto)
+            except ValueError:
+                return texto
         if self.type == "mes":
             # 'atual' e o caso comum: o relatorio do mes corrente, sem digitar.
             if texto.lower() in ("atual", "corrente", "hoje"):
@@ -235,11 +248,20 @@ class ReportConfig:
             if not isinstance(raw, dict) or not raw.get("name"):
                 raise ConfigError(f"[{name}] parametro sem 'name'")
             tipo = str(raw.get("type") or "texto").lower()
-            if tipo not in ("mes", "data", "numero", "texto"):
+            if tipo not in ("mes", "data", "numero", "texto", "lista"):
                 raise ConfigError(
                     f"[{name}.{raw['name']}] tipo '{tipo}' invalido; "
-                    f"use mes, data, numero ou texto"
+                    f"use mes, data, numero, texto ou lista"
                 )
+            opcoes: list[tuple[str, str]] = []
+            for op in raw.get("options") or []:
+                if isinstance(op, dict):
+                    valor = "" if op.get("value") is None else str(op["value"])
+                    opcoes.append((valor, str(op.get("label") or valor)))
+                else:
+                    opcoes.append((str(op), str(op)))
+            if tipo == "lista" and not opcoes:
+                raise ConfigError(f"[{name}.{raw['name']}] tipo 'lista' exige 'options'")
             parametros.append(
                 Parameter(
                     name=str(raw["name"]).strip(),
@@ -247,6 +269,7 @@ class ReportConfig:
                     type=tipo,
                     default=raw.get("default"),
                     optional=bool(raw.get("optional")),
+                    options=tuple(opcoes),
                 )
             )
         sheets: list[SheetConfig] = []
@@ -535,6 +558,11 @@ def _write_cover(wb, relatorio: ReportConfig, resumo, parametros=None) -> None:
         valor = (parametros or {}).get(parametro.name)
         if isinstance(valor, dt.date):
             mostrado = valor.strftime("%m/%Y" if parametro.type == "mes" else "%d/%m/%Y")
+        elif parametro.options:
+            # Na capa vale o que a pessoa escolheu na tela ("Consolidado"), nao
+            # o valor tecnico que foi para o SQL.
+            escolhido = "" if valor is None else str(valor)
+            mostrado = next((r for v, r in parametro.options if v == escolhido), escolhido or "(todos)")
         else:
             mostrado = "(todos)" if valor is None else str(valor)
         ws.cell(linha, 1, parametro.label).font = Font(bold=True)

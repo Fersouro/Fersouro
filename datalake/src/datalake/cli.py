@@ -459,6 +459,26 @@ def cmd_report(args, settings: Settings) -> int:
 
     if getattr(args, "list", False):
         relatorios = load_reports(settings)
+        if getattr(args, "json", False):
+            # A pagina de geracao le por aqui, em vez de interpretar YAML por
+            # conta propria: o formato dos relatorios fica definido num lugar so.
+            import json
+
+            print(json.dumps([
+                {
+                    "name": r.name,
+                    "title": r.title,
+                    "description": (r.description or "").strip(),
+                    "parameters": [
+                        {"name": p.name, "label": p.label, "type": p.type,
+                         "default": p.default, "optional": p.optional,
+                         "options": [{"value": v, "label": rot} for v, rot in p.options]}
+                        for p in r.parameters
+                    ],
+                }
+                for r in relatorios
+            ], ensure_ascii=False))
+            return EXIT_OK
         print(
             _table(
                 ["RELATORIO", "TITULO", "ABAS", "PARAMETROS", "ARQUIVO"],
@@ -708,6 +728,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-r", "--report", action="append", help="relatorio (pode repetir)")
     p.add_argument("--out", dest="reports_out", help="pasta de destino")
     p.add_argument("--list", action="store_true", help="so lista os relatorios")
+    p.add_argument("--json", action="store_true", help="com --list, devolve JSON")
     p.add_argument("--param", action="append", metavar="NOME=VALOR",
                    help="valor de um parametro do relatorio (pode repetir)")
     p.set_defaults(func=cmd_report)

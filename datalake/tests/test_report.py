@@ -487,3 +487,76 @@ def test_sem_historico_nao_registra_nada(settings):
         assert register_history_views(con, settings) == []
     finally:
         con.close()
+
+
+# ------------------------------------------------------- parametro de escolha
+
+
+def _cfg_revenda():
+    return ReportConfig.from_dict({
+        "name": "r",
+        "parameters": [{
+            "name": "revenda", "label": "Revenda", "type": "lista",
+            "default": "", "optional": True,
+            "options": [{"value": 1, "label": "Revenda 1"},
+                        {"value": 2, "label": "Revenda 2"},
+                        {"value": "", "label": "Consolidado (1 e 2)"}],
+        }],
+        "sheets": [{"name": "A", "sql": "SELECT 1"}],
+    })
+
+
+def test_escolha_vira_numero_para_o_sql():
+    assert _cfg_revenda().resolve_parameters({"revenda": "2"})["revenda"] == 2
+
+
+def test_consolidado_e_ausencia_de_filtro():
+    """Consolidado nao e um terceiro codigo de loja: e nao filtrar loja nenhuma."""
+    assert _cfg_revenda().resolve_parameters({"revenda": ""})["revenda"] is None
+    assert _cfg_revenda().resolve_parameters({})["revenda"] is None      # default
+
+
+def test_opcao_fora_da_lista_e_recusada():
+    with pytest.raises(ValueError, match="nao e uma opcao valida"):
+        _cfg_revenda().resolve_parameters({"revenda": "7"})
+
+
+def test_lista_sem_options_e_erro_de_configuracao():
+    with pytest.raises(ConfigError, match="exige 'options'"):
+        ReportConfig.from_dict({
+            "name": "r",
+            "parameters": [{"name": "x", "type": "lista"}],
+            "sheets": [{"name": "A", "sql": "SELECT 1"}],
+        })
+
+
+def test_capa_mostra_o_rotulo_escolhido(project, lake_com_gold, tmp_path):
+    """Na capa vale 'Consolidado', nao o valor tecnico que foi para o SQL."""
+    _escrever_relatorio(
+        project,
+        """
+name: escolha
+parameters:
+  - name: cliente
+    label: Cliente
+    type: lista
+    default: ""
+    optional: true
+    options:
+      - value: Alfa
+        label: Só Alfa
+      - value: ""
+        label: Todos os clientes
+sheets:
+  - name: Resumo
+    sql: |
+      SELECT nome FROM pedidos_cliente
+       WHERE ($cliente IS NULL OR nome = $cliente)
+       ORDER BY nome
+""",
+        "escolha.yml",
+    )
+    resultado = [r for r in build_all(lake_com_gold, ["escolha"], tmp_path)][0]
+    capa = [c.value for linha in load_workbook(resultado.path)["Capa"].iter_rows()
+            for c in linha]
+    assert "Todos os clientes" in capa

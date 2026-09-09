@@ -94,16 +94,29 @@ página num **gerador**, em vez de uma lista de arquivos prontos:
 
 ```yaml
 parameters:
-  - name: competencia
-    label: Competência
-    type: mes             # mes | data | numero | texto
-    default: atual        # 'atual' = mês corrente
-  - name: departamento
-    label: Departamento
-    type: numero
-    default: 410
-    optional: true        # apagado no formulário = todos
+  - name: data_inicial
+    label: Data inicial
+    type: data            # mes | data | numero | texto | lista
+    default: inicio-do-mes
+  - name: revenda
+    label: Revenda
+    type: lista           # vira um seletor, sem digitar
+    default: ""
+    optional: true
+    options:
+      - value: 1
+        label: Revenda 1
+      - value: 2
+        label: Revenda 2
+      - value: ""         # vazio = sem filtro
+        label: Consolidado (1 e 2)
 ```
+
+`type: lista` gera um seletor com essas opções e recusa qualquer valor fora
+delas. A opção de valor vazio, com `optional: true`, é o "consolidado": não
+filtra nada, então **as duas lojas saem, cada uma na sua linha, e a linha TOTAL
+soma as duas**. Na capa da planilha aparece o rótulo escolhido
+("Consolidado (1 e 2)"), não o valor técnico.
 
 No SQL o valor entra como **parâmetro nomeado do DuckDB**, nunca concatenado —
 é isso que impede o formulário da página de injetar SQL:
@@ -132,8 +145,8 @@ filtros diferentes ficam indistinguíveis depois de salvas.
 
 ### Pela página, em `/gerar`
 
-`https://192.168.78.6:8443/gerar` mostra os relatórios **em lista, um por
-linha**: nome e descrição à esquerda, os campos no meio e o botão **Exportar em
+A tela inicial (`https://192.168.78.6:8443/`) mostra os relatórios **em lista,
+um por linha**: nome e descrição à esquerda, os campos no meio e o botão **Exportar em
 Excel** à direita. As datas são escritas como aqui se escreve — `01/08/2026` a
 `30/08/2026` —, já preenchidas com o primeiro e o último dia do mês. Clicar no
 botão baixa o `.xlsx` direto (vai como anexo, não abre numa aba) e a página
@@ -215,7 +228,7 @@ uma linha por aba com o que ela mostra e quantas linhas tem. É o que responde
 
 | Arquivo | Relatório | Campos |
 |---|---|---|
-| `10_faturamento_funilaria.yml` | Faturamento - Funilaria | Data inicial, Data final, Departamento, Empresa, Revenda |
+| `10_faturamento_funilaria.yml` | Faturamento - Funilaria | Data inicial, Data final, Revenda (1, 2 ou consolidado) |
 
 É o único no ar. Os demais estão em **`conf/reports/exemplos/`**, que a página
 não lê — ficam como referência de escrita (resumo por período, detalhe linha a
@@ -241,9 +254,9 @@ lugar só e o relatório agrega como precisar. Diferenças propositais:
    `BETWEEN TRUNC(SYSDATE,'MM') AND LAST_DAY(SYSDATE)` — sempre o mês corrente.
    Agora são dois campos de data na tela, já preenchidos com o primeiro e o
    último dia do mês: gerar sem mexer em nada dá o mesmo número da consulta.
-2. **Empresa, revenda e departamento viram campo**, em vez de `= 1`, `= 1` e
-   `= 410` cravados no SQL. Vêm preenchidos com esses valores — apagar
-   qualquer um deles significa "todos".
+2. **A loja virou seletor**: Revenda 1, Revenda 2 ou Consolidado. Empresa (`1`)
+   e departamento (`410`) seguem fixos no SQL — este relatório é o da funilaria,
+   e um campo que ninguém muda só ocupa a tela.
 3. **Séries 03 e 08 viram uma coluna `serie`** no modelo; o relatório pivota de
    volta para as duas colunas do original.
 
@@ -285,6 +298,9 @@ da tela corresponde a uma pergunta só.
 - `sql/gold/60_margem_pecas.sql` — grão de **dia** (era mês), para o filtro de
   período funcionar de verdade. Somar os dias de um mês dá exatamente o total
   mensal de antes; as porcentagens saem do relatório, sobre a soma do período.
-- `scripts/servir_pagina.py` — a página `/gerar` e a chamada do `datalake report`.
+- `scripts/servir_pagina.py` — a tela inicial e a chamada do `datalake report`.
+  Os campos de cada relatório vêm de `datalake report --list --json`: o formato
+  fica definido num lugar só, e um tipo novo de campo aparece na tela sem mexer
+  no servidor.
 - `conf/reports/*.yml` — as definições.
 - `tests/test_report.py` — testes (inferência de formato, capa, totais, destaque).
