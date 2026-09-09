@@ -8,7 +8,12 @@
   Faz:
     1. Baixa a versao atual da branch (com cache-buster) para C:\datalake\app.
     2. Roda a carga uma vez (-Run -KeepGoing) -- ja constroi o venv e gera a pagina.
-    3. Copia o ATUALIZAR.bat e o servir_pagina.py para C:\datalake (locais estaveis).
+    3. Copia ATUALIZAR.bat, servir_pagina.py e instalar_servidor.ps1 para
+       C:\datalake (locais estaveis).
+
+  O .env (credenciais do Oracle) fica em C:\datalake\.env e e devolvido ao
+  projeto a cada atualizacao. Sem isso a senha do banco teria de ser digitada
+  de novo toda vez, porque a pasta do projeto e apagada e rebaixada inteira.
 
   Uso:
     powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\instalar_app.ps1
@@ -29,6 +34,19 @@ function Info($t) { Write-Host "  $t" -ForegroundColor Cyan }
 function Ok($t)   { Write-Host "  ok: $t" -ForegroundColor Green }
 
 # 1. baixa o codigo -------------------------------------------------------
+$envEstavel = Join-Path $LakeRoot ".env"
+
+# O .env vive dentro do projeto, e o projeto e apagado a cada atualizacao.
+# Antes de apagar, guarda o que estiver la -- e a senha do Oracle.
+if (-not (Test-Path $envEstavel)) {
+    $envAntigo = Get-ChildItem $App -Recurse -Force -Filter ".env" -ErrorAction SilentlyContinue |
+                 Select-Object -First 1
+    if ($envAntigo) {
+        Copy-Item $envAntigo.FullName $envEstavel -Force
+        Ok "credenciais preservadas em $envEstavel"
+    }
+}
+
 Info "Baixando o codigo (ref: $Ref)"
 Remove-Item $App -Recurse -Force -ErrorAction SilentlyContinue
 $zip = Join-Path (Split-Path $App) "app-download.zip"
@@ -56,15 +74,38 @@ if (-not (Select-String -Path $gen -Pattern "historico_estoque" -Quiet)) {
 # 2. carga + venv + pagina ------------------------------------------------
 $setup = (Get-ChildItem $App -Recurse -Filter setup_windows.ps1 | Select-Object -First 1).FullName
 if (-not $setup) { throw "Nao achei setup_windows.ps1 no download." }
+# A raiz do projeto e a pasta com o pyproject.toml -- o mesmo criterio que o
+# setup_windows.ps1 usa para achar o .env.
+$projeto = Split-Path (Split-Path $setup -Parent) -Parent
+if (-not (Test-Path (Join-Path $projeto "pyproject.toml"))) {
+    $achado = Get-ChildItem $App -Recurse -Filter "pyproject.toml" | Select-Object -First 1
+    if ($achado) { $projeto = $achado.DirectoryName }
+}
+if (Test-Path $envEstavel) {
+    Copy-Item $envEstavel (Join-Path $projeto ".env") -Force
+    Ok "credenciais restauradas no projeto (nao vai pedir a senha do Oracle)"
+}
+
 Info "Rodando a carga uma vez (constroi o venv e gera a pagina)"
 & $setup -Run -KeepGoing -LakeRoot $LakeRoot
 
+# Se a senha foi digitada agora, guarda para as proximas atualizacoes.
+$envProjeto = Join-Path $projeto ".env"
+if ((Test-Path $envProjeto) -and -not (Test-Path $envEstavel)) {
+    Copy-Item $envProjeto $envEstavel -Force
+    Ok "credenciais guardadas em $envEstavel (nao serao pedidas de novo)"
+}
+
 # 3. copia os apoios para locais estaveis ---------------------------------
-Info "Copiando ATUALIZAR.bat e servir_pagina.py para $LakeRoot"
+Info "Copiando os apoios para $LakeRoot"
 $bat = (Get-ChildItem $App -Recurse -Filter "ATUALIZAR-DATALAKE.bat" | Select-Object -First 1).FullName
 if ($bat) { Copy-Item $bat (Join-Path $LakeRoot "ATUALIZAR.bat") -Force; Ok "ATUALIZAR.bat atualizado" }
 $srv = (Get-ChildItem $App -Recurse -Filter "servir_pagina.py" | Select-Object -First 1).FullName
 if ($srv) { Copy-Item $srv (Join-Path $LakeRoot "servir_pagina.py") -Force; Ok "servir_pagina.py atualizado" }
+# o instalador do servidor da pagina: sem esta copia, o comando documentado
+# (-File C:\datalake\instalar_servidor.ps1) falha dizendo que o arquivo nao existe.
+$isv = (Get-ChildItem $App -Recurse -Filter "instalar_servidor.ps1" | Select-Object -First 1).FullName
+if ($isv) { Copy-Item $isv (Join-Path $LakeRoot "instalar_servidor.ps1") -Force; Ok "instalar_servidor.ps1 atualizado" }
 # o proprio instalador, para rodar de novo facil no futuro
 $eu = (Get-ChildItem $App -Recurse -Filter "instalar_app.ps1" | Select-Object -First 1).FullName
 if ($eu) { Copy-Item $eu (Join-Path $LakeRoot "instalar_app.ps1") -Force; Ok "instalar_app.ps1 disponivel em $LakeRoot" }
@@ -74,4 +115,7 @@ Write-Host "============================================================" -Foreg
 Write-Host "  Codigo instalado em $App." -ForegroundColor Green
 Write-Host "  As cargas 6x/dia (ATUALIZAR.bat) usam esse projeto, sem baixar de novo." -ForegroundColor Green
 Write-Host "  Pagina: $(Join-Path $LakeRoot 'export\estoque_minimo.html')" -ForegroundColor Green
+Write-Host ""
+Write-Host "  Proximo passo -- publicar na rede (PowerShell como Administrador):" -ForegroundColor Green
+Write-Host "    powershell -NoProfile -ExecutionPolicy Bypass -File $LakeRoot\instalar_servidor.ps1 -Usuario <nome>"
 Write-Host "============================================================" -ForegroundColor Green

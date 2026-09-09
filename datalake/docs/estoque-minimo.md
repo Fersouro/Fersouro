@@ -177,8 +177,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\instalar_app.ps1
 ```
 
 Ele baixa a versão atual da branch para `C:\datalake\app`, constrói o venv, faz
-uma carga e copia `ATUALIZAR.bat` / `servir_pagina.py` / `instalar_app.ps1` para
-`C:\datalake`. Para fixar um commit exato: `... -Ref <sha>`.
+uma carga e copia `ATUALIZAR.bat`, `servir_pagina.py`, `instalar_servidor.ps1` e
+`instalar_app.ps1` para `C:\datalake`. Para fixar um commit exato: `... -Ref <sha>`.
+
+A senha do Oracle é pedida **uma vez**: ela fica em `C:\datalake\.env`, que o
+instalador devolve ao projeto a cada atualização. A pasta do projeto é apagada e
+rebaixada inteira em cada execução — sem essa cópia estável, a senha teria de ser
+digitada sempre. (Se a senha ficar vazia, o `setup` para em "Senha vazia" e a
+carga não roda; a página e os relatórios continuam com os dados da carga
+anterior.)
 
 Rode isto **sempre que houver mudança de código publicada** no repositório. As
 cargas do dia a dia não baixam — usam o que este script deixou.
@@ -222,6 +229,8 @@ cargas do dia a dia não baixam — usam o que este script deixou.
 | Carga para no INGEST sem regerar a página | `C:\datalake\ATUALIZAR.bat` desatualizado (versão sem `--keep-going`) | rode `instalar_app.ps1`, que reescreve o `.bat` no servidor |
 | Carga não conecta no Oracle | rota `10.15.111.254:1521` caiu | problema de rede/TI; `scripts/diagnostico_rede.ps1` ajuda a apontar onde quebra |
 | Código velho após atualizar | cache do GitHub na hora do download | rode `instalar_app.ps1` de novo, ou fixe o commit com `-Ref <sha>` |
+| `-File C:\datalake\instalar_servidor.ps1` não existe | versão do `instalar_app.ps1` anterior a 09/09/2026 não copiava esse arquivo | rode o `instalar_app.ps1` atual (ele passou a copiar), ou chame pelo caminho do projeto: `C:\datalake\app\Fersouro-*\datalake\scripts\instalar_servidor.ps1` |
+| `setup` para em "Senha vazia" | a senha do Oracle não foi digitada | rode o `instalar_app.ps1` de novo e informe a senha de `FERNANDO_DEV`; a partir daí ela fica no `C:\datalake\.env` |
 
 ---
 
@@ -243,6 +252,7 @@ No servidor (`C:\datalake`):
 - `export/relatorios/` — planilhas geradas pela camada de relatórios.
 - `cert/servidor.pem` e `cert/servidor.key` — certificado do HTTPS (autoassinado).
 - `usuarios.json` — quem pode entrar (senha em hash). Restrinja a ACL desse arquivo.
+- `.env` — credenciais do Oracle, preservadas entre atualizações (fora do Git).
 - `minimos_pecas.csv` — lista de mínimos (editável pela equipe).
 - `historico_estoque/AAAA-MM-DD.parquet` — snapshots diários.
 - `app/` — projeto fixo (código). `ATUALIZAR.bat`, `instalar_app.ps1`,
