@@ -538,6 +538,28 @@ def pagina_gerador(usuario, relatorios, projeto, pronto=None, erro=None):
     return _moldura("Gerar relatório", corpo, centro=False)
 
 
+def pagina_sem_usuarios(arquivo):
+    """O servico sobe mesmo sem ninguem cadastrado, e explica na tela.
+
+    Antes ele recusava subir: a tarefa agendada terminava, ninguem ficava na
+    porta e o navegador dizia so 'conexao recusada' -- que nao ajuda a
+    descobrir que faltava cadastrar alguem.
+    """
+    corpo = """
+      <div class="cartao">
+        <h1>%s</h1>
+        <p class="sub">Ninguém está cadastrado ainda, então ninguém consegue entrar.</p>
+        <div class="erro">Arquivo de usuários: %s</div>
+        <p class="rodape" style="text-align:left">
+          No servidor, dê um duplo-clique em<br>
+          <strong>C:\datalake\CADASTRAR-USUARIO.bat</strong><br><br>
+          Ele pergunta o nome, pede a senha e grava. Vale na hora — não é
+          preciso reiniciar nada, basta recarregar esta página.
+        </p>
+      </div>""" % (html.escape(TITULO), html.escape(arquivo))
+    return _moldura(TITULO, corpo)
+
+
 def pagina_painel(usuario, pasta):
     def listar(sub):
         caminho = os.path.join(pasta, sub) if sub else pasta
@@ -803,6 +825,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Content-Length", str(len(corpo)))
             self.end_headers()
             return self.wfile.write(corpo)
+
+        if self.exige_login and not self.usuarios.atuais():
+            # Nada e servido sem usuario -- mas a tela diz o que fazer, em vez
+            # de o servidor simplesmente nao existir na rede.
+            return self._html(pagina_sem_usuarios(self.usuarios.caminho), 503)
 
         if self.exige_login:
             if caminho == "/entrar":
@@ -1104,13 +1131,14 @@ def main():
 
     usuarios = ArquivoUsuarios(arquivo_usuarios)
     if not opcoes["sem_login"] and not usuarios.atuais():
-        print("Nenhum usuario cadastrado em", arquivo_usuarios)
-        print("")
-        print("Crie o primeiro antes de subir o servidor:")
+        # Sobe assim mesmo: como Tarefa Agendada, sair aqui deixaria a porta
+        # vazia e o navegador diria apenas 'conexao recusada'. Servindo, a
+        # propria tela diz que falta cadastrar alguem -- e assim que o primeiro
+        # usuario existir, a pagina passa a funcionar sem reiniciar nada.
+        print("AVISO: nenhum usuario cadastrado em", arquivo_usuarios)
+        print("A pagina vai subir mostrando o aviso, sem servir arquivo nenhum.")
+        print("Cadastre com:")
         print("    " + comando(os.path.abspath(__file__), "--criar-usuario", "fernando"))
-        print("Ou, para servir sem senha (nao recomendado -- a pasta tem margem")
-        print("e faturamento):  --sem-login")
-        return 1
 
     ctx = None
     if opcoes["tls"]:

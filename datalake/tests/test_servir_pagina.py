@@ -331,3 +331,12 @@ sheets:
     assert "class=\"lista\"" in corpo and "class=\"linha\"" in corpo   # um por linha
     assert "grid-template-columns" not in corpo                        # nao e mais grade
     assert dt.date.today().replace(day=1).strftime("%d/%m/%Y") in corpo
+
+
+def test_sem_usuario_o_servidor_explica_em_vez_de_nao_existir(tmp_path):
+    """Sair na subida deixava a porta vazia: o navegador dizia so 'conexao
+    recusada', que nao conta que faltava cadastrar alguem."""
+    corpo = servir.pagina_sem_usuarios(str(tmp_path / "usuarios.json"))
+    assert "Ninguém está cadastrado" in corpo
+    assert "CADASTRAR-USUARIO.bat" in corpo
+    assert "usuarios.json" in corpo
