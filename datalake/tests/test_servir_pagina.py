@@ -287,3 +287,47 @@ def test_pagina_do_gerador_escapa_o_que_vem_de_fora(tmp_path):
                                   erro="<script>y</script>")
     assert "<script>" not in corpo
     assert "&lt;script&gt;" in corpo
+
+
+def test_data_no_formulario_sai_em_dd_mm_aaaa():
+    """01/08/2026 e como a data se escreve aqui -- e o servidor aceita assim."""
+    hoje = dt.date.today()
+    assert servir._padrao_visivel("data", "inicio-do-mes") == hoje.replace(day=1).strftime("%d/%m/%Y")
+    assert servir._padrao_visivel("data", "hoje") == hoje.strftime("%d/%m/%Y")
+    assert servir._padrao_visivel("data", "2026-08-30") == "30/08/2026"
+    assert servir._padrao_visivel("data", "30/08/2026") == "30/08/2026"
+
+
+def test_fim_do_mes_no_formulario_em_dezembro(monkeypatch):
+    class Dezembro(dt.date):
+        @classmethod
+        def today(cls):
+            return dt.date(2026, 12, 7)
+
+    monkeypatch.setattr(servir.datetime, "date", Dezembro)
+    assert servir._padrao_visivel("data", "fim-do-mes") == "31/12/2026"
+
+
+def test_layout_e_lista_com_botao_de_exportar(tmp_path):
+    projeto = _projeto_falso(tmp_path, """
+name: r
+title: Relatorio
+parameters:
+  - name: data_inicial
+    label: Data inicial
+    type: data
+    default: inicio-do-mes
+  - name: data_final
+    label: Data final
+    type: data
+    default: fim-do-mes
+sheets:
+  - name: A
+    sql: SELECT 1
+""")
+    corpo = servir.pagina_gerador("fernando", servir.relatorios_disponiveis(str(projeto)),
+                                  str(projeto))
+    assert "Exportar em Excel" in corpo
+    assert "class=\"lista\"" in corpo and "class=\"linha\"" in corpo   # um por linha
+    assert "grid-template-columns" not in corpo                        # nao e mais grade
+    assert dt.date.today().replace(day=1).strftime("%d/%m/%Y") in corpo

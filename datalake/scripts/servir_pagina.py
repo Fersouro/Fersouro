@@ -375,11 +375,19 @@ th, td { text-align:left; padding:9px 8px; border-bottom:1px solid #1e293b; font
 th { color:#94a3b8; font-weight:600; font-size:12px; text-transform:uppercase; }
 td.n { text-align:right; color:#94a3b8; white-space:nowrap; }
 .vazio { color:#64748b; font-size:14px; padding:10px 0; }
-.grade { display:grid; gap:16px; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); }
-.cartao-lista { background:#131c31; border:1px solid #1e293b; border-radius:10px; padding:18px 20px; }
-.cartao-lista h3 { margin:0 0 4px; font-size:16px; color:#fff; }
-.cartao-lista .sub { margin:0; font-size:13px; }
-.cartao-lista button { margin-top:16px; }
+.lista { display:flex; flex-direction:column; gap:12px; }
+.linha { display:flex; align-items:flex-end; gap:18px; flex-wrap:wrap;
+         background:#131c31; border:1px solid #1e293b; border-radius:10px;
+         padding:16px 18px; }
+.linha .quem { flex:1 1 250px; min-width:220px; }
+.linha .quem strong { display:block; font-size:16px; color:#fff; }
+.linha .quem span { display:block; margin-top:2px; font-size:13px; color:#94a3b8; }
+.campos { display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; }
+.campo { margin:0; font-size:12px; color:#94a3b8; }
+.campo input { margin-top:4px; padding:8px 10px; font-size:14px; }
+.campo.data input { width:120px; }
+.campo.curto input { width:110px; }
+.linha button { width:auto; margin-top:0; padding:10px 18px; white-space:nowrap; }
 .aviso { margin:12px 0; padding:10px 12px; border-radius:8px; background:#12331f;
          border:1px solid #14532d; color:#bbf7d0; font-size:14px; }
 .acao { display:inline-block; margin:0 0 4px; padding:10px 16px; border-radius:8px;
@@ -439,18 +447,26 @@ def _padrao_visivel(tipo, bruto):
     if tipo == "mes" and texto in ("atual", "corrente", "hoje"):
         return hoje.strftime("%Y-%m")
     if tipo == "data":
+        # dd/mm/aaaa: e como a data se escreve aqui, e o servidor aceita nos
+        # dois formatos. O seletor nativo do navegador ficou de fora porque
+        # mostra o formato do sistema, que nem sempre e o brasileiro.
         if texto == "hoje":
-            return hoje.strftime("%Y-%m-%d")
+            return hoje.strftime("%d/%m/%Y")
         if texto == "ontem":
-            return (hoje - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+            return (hoje - datetime.timedelta(days=1)).strftime("%d/%m/%Y")
         if texto == "inicio-do-mes":
-            return hoje.replace(day=1).strftime("%Y-%m-%d")
+            return hoje.replace(day=1).strftime("%d/%m/%Y")
         if texto == "fim-do-mes":
             if hoje.month == 12:
                 fim = datetime.date(hoje.year, 12, 31)
             else:
                 fim = datetime.date(hoje.year, hoje.month + 1, 1) - datetime.timedelta(days=1)
-            return fim.strftime("%Y-%m-%d")
+            return fim.strftime("%d/%m/%Y")
+        for formato in ("%Y-%m-%d", "%d/%m/%Y"):
+            try:
+                return datetime.datetime.strptime(texto, formato).strftime("%d/%m/%Y")
+            except ValueError:
+                continue
     return str(bruto or "")
 
 
@@ -471,22 +487,24 @@ def pagina_gerador(usuario, relatorios, projeto, pronto=None, erro=None):
             campos = []
             for parametro in item["parameters"]:
                 tipo = parametro.get("type", "texto")
-                dica = {"mes": "AAAA-MM (ex.: 2026-09)", "data": "AAAA-MM-DD",
+                dica = {"mes": "aaaa-mm", "data": "dd/mm/aaaa",
                         "numero": "número"}.get(tipo, "")
                 padrao = _padrao_visivel(tipo, parametro.get("default", ""))
                 opcional = " (opcional)" if parametro.get("optional") else ""
                 campos.append(
-                    "<label>%s%s</label><input type='%s' name='p_%s' value='%s' placeholder='%s'>"
-                    % (html.escape(parametro["label"]), opcional,
-                       "date" if tipo == "data" else "text",
+                    "<label class='campo %s'>%s%s"
+                    "<input name='p_%s' value='%s' placeholder='%s' autocomplete='off'></label>"
+                    % ("data" if tipo == "data" else "curto",
+                       html.escape(parametro["label"]), opcional,
                        html.escape(parametro["name"]), html.escape(str(padrao)),
                        html.escape(dica))
                 )
             blocos.append(
-                """<form class="cartao-lista" method="post" action="/gerar">
+                """<form class="linha" method="post" action="/gerar">
                      <input type="hidden" name="relatorio" value="%s">
-                     <h3>%s</h3><p class="sub">%s</p>%s
-                     <button type="submit">Gerar planilha</button>
+                     <div class="quem"><strong>%s</strong><span>%s</span></div>
+                     <div class="campos">%s</div>
+                     <button type="submit">Exportar em Excel</button>
                    </form>"""
                 % (html.escape(item["name"]),
                    html.escape(item.get("title") or item["name"]),
@@ -515,7 +533,7 @@ def pagina_gerador(usuario, relatorios, projeto, pronto=None, erro=None):
           <a href="/">Voltar</a>
         </div>
         %s
-        <div class="grade">%s</div>
+        <div class="lista">%s</div>
       </div>""" % (avisos, corpo_relatorios)
     return _moldura("Gerar relatório", corpo, centro=False)
 
@@ -800,6 +818,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         usuario = self._usuario()
         if usuario is None:
             return self._ir_para("/entrar?proximo=" + urllib.parse.quote(self.path))
+        if caminho.startswith("/relatorios/") and caminho.endswith((".xlsx", ".csv")):
+            # Sem isto, dependendo do navegador o .xlsx abre numa aba em vez de
+            # ir para a pasta de downloads.
+            self._anexo = os.path.basename(urllib.parse.unquote(caminho))
         if caminho in ("/", "/index.html"):
             return self._html(pagina_painel(usuario, self.directory))
         if caminho == "/gerar":
@@ -903,11 +925,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             os.replace(arquivo, final)
         except OSError:
             final = arquivo
+        # Vai direto para o arquivo: o navegador baixa e a pagina do formulario
+        # continua onde estava. Um link intermediario so acrescentaria um clique.
         return self._ir_para(
-            "/gerar?pronto=" + urllib.parse.quote(os.path.basename(final))
+            "/relatorios/gerados/" + urllib.parse.quote(os.path.basename(final))
         )
 
+    _anexo = None
+
     def end_headers(self):
+        if self._anexo:
+            self.send_header("Content-Disposition",
+                             'attachment; filename="%s"' % self._anexo)
+            self._anexo = None
         # A pagina e regerada a cada carga. Sem isso o navegador mostra a
         # versao velha do cache e parece que "nada mudou".
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")

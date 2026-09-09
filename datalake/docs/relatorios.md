@@ -132,8 +132,12 @@ filtros diferentes ficam indistinguíveis depois de salvas.
 
 ### Pela página, em `/gerar`
 
-`https://192.168.78.6:8443/gerar` lista os relatórios com seus campos e um botão
-**Gerar planilha**. O servidor não gera dentro do próprio processo: ele chama o
+`https://192.168.78.6:8443/gerar` mostra os relatórios **em lista, um por
+linha**: nome e descrição à esquerda, os campos no meio e o botão **Exportar em
+Excel** à direita. As datas são escritas como aqui se escreve — `01/08/2026` a
+`30/08/2026` —, já preenchidas com o primeiro e o último dia do mês. Clicar no
+botão baixa o `.xlsx` direto (vai como anexo, não abre numa aba) e a página
+continua onde estava, pronta para a próxima consulta. O servidor não gera dentro do próprio processo: ele chama o
 `datalake report` do projeto, com o Python do venv dele — o mesmo código da
 carga, sem exigir duckdb/openpyxl no Python do serviço.
 
