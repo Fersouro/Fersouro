@@ -505,6 +505,11 @@ def cmd_report(args, settings: Settings) -> int:
     for r in resultados:
         if r.status == "failed":
             print(f"Falha em {r.report}: {r.message}")
+        elif r.status == "skipped":
+            # Quem chamou de fora precisa saber que nao saiu arquivo, e por que:
+            # 'skipped' e sucesso para a execucao, mas nao para quem pediu a
+            # planilha e ficou sem ela.
+            print(f"Ignorado {r.report}: {r.message}")
     return EXIT_FAILED if falhas else EXIT_OK
 
 

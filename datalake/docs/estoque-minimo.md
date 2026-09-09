@@ -110,11 +110,14 @@ momento, então dias anteriores ao início não existem.
 - Somente **rede interna (LAN)** — não é acesso externo; para ver de fora, use
   VPN, não abra a porta na internet.
 
-### Gerador de relatórios
-Em **`https://192.168.78.6:8443/gerar`** dá para gerar qualquer relatório na
-hora, escolhendo o período (e o departamento, no de funilaria), em vez de
-esperar a próxima carga. O arquivo sai em `export/relatorios/gerados/` com data
-e hora no nome. Detalhes em [`relatorios.md`](relatorios.md), seção 3.
+### A tela inicial é o gerador de relatórios
+**`https://192.168.78.6:8443/`** abre a lista de relatórios: um por linha, com
+os campos de data (`01/09/2026` a `30/09/2026`) e o botão **Exportar em Excel**,
+que baixa a planilha na hora — sem esperar a próxima carga. O arquivo sai em
+`export/relatorios/gerados/` com data e hora no nome.
+
+No alto da tela: **Estoque Mínimo** (a página de sempre), **Arquivos** (o que as
+cargas geraram) e **Sair**. Detalhes em [`relatorios.md`](relatorios.md).
 
 ### Login
 O acesso pede **usuário e senha** — a pasta `export` tem margem, faturamento e

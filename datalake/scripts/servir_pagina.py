@@ -390,8 +390,7 @@ td.n { text-align:right; color:#94a3b8; white-space:nowrap; }
 .linha button { width:auto; margin-top:0; padding:10px 18px; white-space:nowrap; }
 .aviso { margin:12px 0; padding:10px 12px; border-radius:8px; background:#12331f;
          border:1px solid #14532d; color:#bbf7d0; font-size:14px; }
-.acao { display:inline-block; margin:0 0 4px; padding:10px 16px; border-radius:8px;
-        background:#2563eb; color:#fff !important; font-weight:600; text-decoration:none; }
+.atalhos { display:flex; gap:16px; white-space:nowrap; }
 """
 
 
@@ -527,15 +526,19 @@ def pagina_gerador(usuario, relatorios, projeto, pronto=None, erro=None):
     corpo = """
       <div class="painel">
         <div class="topo">
-          <div><h1>Gerar relatório</h1>
-               <p class="sub">Escolha o relatório e o período. A planilha é gerada
-                  na hora, com o dado que está no lake agora.</p></div>
-          <a href="/">Voltar</a>
+          <div><h1>%s</h1>
+               <p class="sub">Escolha o período e exporte. A planilha é montada na
+                  hora, com o dado que está no lake agora.</p></div>
+          <div class="atalhos">
+            <a href="/estoque_minimo.html">Estoque Mínimo</a>
+            <a href="/arquivos">Arquivos</a>
+            <a href="/sair">Sair</a>
+          </div>
         </div>
         %s
         <div class="lista">%s</div>
-      </div>""" % (avisos, corpo_relatorios)
-    return _moldura("Gerar relatório", corpo, centro=False)
+      </div>""" % (html.escape(TITULO), avisos, corpo_relatorios)
+    return _moldura(TITULO, corpo, centro=False)
 
 
 def pagina_sem_usuarios(arquivo):
@@ -586,10 +589,9 @@ def pagina_painel(usuario, pasta):
       <div class="painel">
         <div class="topo">
           <div><h1>%s</h1><p class="sub">Olá, %s.</p></div>
-          <a href="/sair">Sair</a>
+          <div class="atalhos"><a href="/">Relatórios</a><a href="/sair">Sair</a></div>
         </div>
         %s
-        <p><a class="acao" href="/gerar">Gerar relatório agora</a></p>
         <h2>Relatórios</h2>
         %s
         <h2>Modelos exportados</h2>
@@ -740,6 +742,12 @@ def gerar_relatorio(projeto, nome, valores, destino_dir):
         # tabela e resumo, que nao ajudam quem esta olhando o formulario.
         causa = next((l for l in reversed(linhas) if l.startswith("Falha em ")), None)
         if not causa:
+            ignorado = next((l for l in reversed(linhas) if l.startswith("Ignorado ")), None)
+            if ignorado:
+                causa = ("Este relatorio depende de um modelo que ainda nao foi "
+                         "carregado no lake. Rode uma carga e tente de novo. (%s)"
+                         % ignorado)
+        if not causa:
             causa = next((l for l in reversed(linhas) if "parametro" in l.lower()), None)
         return False, (causa or (linhas[-1] if linhas else "falhou sem mensagem")), None
     return True, "", arquivo
@@ -849,9 +857,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # Sem isto, dependendo do navegador o .xlsx abre numa aba em vez de
             # ir para a pasta de downloads.
             self._anexo = os.path.basename(urllib.parse.unquote(caminho))
-        if caminho in ("/", "/index.html"):
-            return self._html(pagina_painel(usuario, self.directory))
-        if caminho == "/gerar":
+        if caminho in ("/", "/index.html", "/gerar"):
             consulta = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             # So aceita como "pronto" um arquivo que existe mesmo na pasta de
             # gerados -- o nome vem da URL, e URL qualquer um escreve.
@@ -866,6 +872,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 pronto=pronto,
                 erro=(consulta.get("erro") or [None])[0],
             ))
+        if caminho == "/arquivos":
+            return self._html(pagina_painel(usuario, self.directory))
         super().do_GET()
 
     def do_HEAD(self):

@@ -1,10 +1,10 @@
-# Funilaria - Faturamento
+# Faturamento - Funilaria
 #
 # Uma consulta, um relatorio, uma aba: as mesmas colunas da consulta que a
 # equipe roda no Apollo. O que era filtro fixo no SQL virou campo na tela --
 # principalmente o periodo, que ali era sempre "o mes corrente".
-name: funilaria-faturamento
-title: Funilaria - Faturamento
+name: faturamento-funilaria
+title: Faturamento - Funilaria
 description: >-
   Faturamento liquido das notas de servico (series 03 e 08) por filial, no
   periodo escolhido. Fonte: modelo gold 'faturamento_notas'
