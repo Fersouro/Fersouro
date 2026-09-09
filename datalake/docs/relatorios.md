@@ -23,7 +23,7 @@ datalake report --out D:\saida  # outra pasta de destino
 Os arquivos saem em `<lake>/export/relatorios/` — no servidor,
 `C:\datalake\export\relatorios\`. Como o servidor da página publica a pasta
 `export` inteira, eles já ficam acessíveis na rede em
-**`http://IP-DO-SERVIDOR:8080/relatorios/`**.
+**`https://192.168.78.6:8443/relatorios/`**.
 
 O `datalake run` gera os relatórios sozinho, no fim do pipeline (depois do
 export). Ou seja: as 6 cargas diárias já atualizam as planilhas. Para desligar,

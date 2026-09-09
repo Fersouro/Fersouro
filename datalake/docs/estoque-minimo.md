@@ -103,9 +103,29 @@ momento, então dias anteriores ao início não existem.
   manda cabeçalho *no-cache* para a página vir sempre atualizada).
 - Instalado como **Tarefa Agendada** `DatalakeEstoquePagina` (roda na
   inicialização, conta SYSTEM, sem login) por `scripts/instalar_servidor.ps1`.
-- Porta **8080**. Endereço: **`http://IP-DO-SERVIDOR:8080/`** (a raiz redireciona
-  para a página). Somente **rede interna (LAN)** — não é acesso externo; para
-  ver de fora, use VPN, não abra a porta na internet.
+- **HTTPS na porta 8443.** Endereço: **`https://192.168.78.6:8443/`** (a raiz
+  redireciona para a página; os relatórios ficam em `/relatorios/`). A porta
+  **8080** continua respondendo e **redireciona** para o HTTPS, então links
+  antigos salvos continuam funcionando.
+- Somente **rede interna (LAN)** — não é acesso externo; para ver de fora, use
+  VPN, não abra a porta na internet.
+
+### O certificado
+Autoassinado, gerado sozinho na primeira execução em
+`C:\datalake\cert\servidor.pem` (validade de 10 anos). Ele cobre o nome da
+máquina e todos os IPs dela — inclusive o `192.168.78.6` quando o serviço é
+instalado com `-Escuta 192.168.78.6`.
+
+Por ser autoassinado, o navegador avisa na primeira visita ("conexão não é
+particular" → *Avançado* → *Continuar*). Para tirar o aviso da rede toda,
+instale o `servidor.pem` como **Autoridade de Certificação Raiz Confiável** nas
+máquinas (dá para distribuir por GPO).
+
+Instalar/reinstalar o serviço (PowerShell como Administrador):
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\instalar_servidor.ps1 -Escuta 192.168.78.6
+```
+Volta ao HTTP antigo com `-Http`; muda a porta com `-Porta`.
 
 Reiniciar o servidor:
 ```
@@ -145,7 +165,8 @@ cargas do dia a dia não baixam — usam o que este script deixou.
 
 ## 8. Operação do dia a dia
 
-- **Ver a página:** abrir `http://IP-DO-SERVIDOR:8080/` no navegador.
+- **Ver a página:** abrir `https://192.168.78.6:8443/` no navegador
+  (a `http://...:8080/` redireciona para lá).
 - **Mudar mínimos / adicionar peças:** editar `C:\datalake\minimos_pecas.csv`
   (Bloco de Notas). Reflete na próxima carga, ou force agora:
   ```
@@ -164,6 +185,10 @@ cargas do dia a dia não baixam — usam o que este script deixou.
 | Sintoma | Causa provável | O que fazer |
 |---|---|---|
 | Página não muda | cache do navegador | **Ctrl+F5**; conferir se o `.html` tem `LastWriteTime` recente |
+| Aviso de certificado no navegador | certificado autoassinado | é esperado; *Avançado → Continuar*, ou instale o `C:\datalake\cert\servidor.pem` como raiz confiável |
+| `ERR_SSL_PROTOCOL_ERROR` | acessou `https://` numa porta servida sem TLS (ou vice-versa) | confira a porta: 8443 é HTTPS, 8080 só redireciona |
+| Serviço não sobe na 8443 | porta ocupada por outro programa | `netstat -ano \| findstr :8443`; use `-Porta` diferente ou libere a porta |
+| `Nao consegui gerar o certificado` | falta o pacote `cryptography` no Python do serviço | `python -m pip install cryptography` e reinicie a tarefa |
 | Só aparece Revenda 1 | `minimos_pecas.csv` sem linhas `;2;` **ou** CSV corrompido (uma linha só) | reescrever o CSV via array/Bloco de Notas; conferir `read_csv` sem erro |
 | `read_csv_auto ... maximum line size` | CSV colado virou uma linha só | regravar o CSV com quebras de linha reais |
 | `ORA-00942` numa tabela com `filter` | tabela citada dentro do `filter` sem o schema | qualifique com `CNP.` no `ccm.yml` — o conector só qualifica a tabela do `FROM` principal |
@@ -189,6 +214,8 @@ No repositório (`datalake/`):
 
 No servidor (`C:\datalake`):
 - `lake.duckdb` — catálogo. `silver/`, `gold/`, `export/` — dados e saídas.
+- `export/relatorios/` — planilhas geradas pela camada de relatórios.
+- `cert/servidor.pem` e `cert/servidor.key` — certificado do HTTPS (autoassinado).
 - `minimos_pecas.csv` — lista de mínimos (editável pela equipe).
 - `historico_estoque/AAAA-MM-DD.parquet` — snapshots diários.
 - `app/` — projeto fixo (código). `ATUALIZAR.bat`, `instalar_app.ps1`,

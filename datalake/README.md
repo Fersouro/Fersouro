@@ -295,7 +295,8 @@ gold pelo nome), entao nao ha linguagem nova. A primeira aba e sempre a **Capa**
 titulo, quando foi gerado e o que tem em cada aba.
 
 Os arquivos saem em `data/export/relatorios/` e o `datalake run` os regera ao
-fim de cada carga. Desligue com `reports.enabled: false` no `settings.yml`.
+fim de cada carga. No servidor da empresa eles ficam publicados junto da pagina,
+em `https://192.168.78.6:8443/relatorios/`. Desligue com `reports.enabled: false` no `settings.yml`.
 Relatorio que cita modelo ainda nao carregado sai como `skipped`, sem derrubar
 a execucao. Detalhes em [`docs/relatorios.md`](docs/relatorios.md).
 

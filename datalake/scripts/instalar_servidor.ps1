@@ -1,22 +1,33 @@
 <#
-  Instala a pagina de Estoque Minimo como servico na rede interna.
+  Instala a pagina de Estoque Minimo (e os relatorios) como servico HTTPS na
+  rede interna.
 
   Faz, de uma vez (precisa rodar como Administrador):
     1. Copia o servir_pagina.py para C:\datalake (local estavel, sobrevive ao -Update).
-    2. Libera a porta no firewall do Windows.
-    3. Registra uma Tarefa Agendada que sobe o servidor na INICIALIZACAO
+    2. Garante o pacote 'cryptography' (o certificado autoassinado depende dele).
+    3. Libera as portas no firewall do Windows.
+    4. Registra uma Tarefa Agendada que sobe o servidor na INICIALIZACAO
        (conta SYSTEM: nao precisa de ninguem logado).
-    4. Inicia o servico agora.
+    5. Inicia o servico agora.
 
   Uso (PowerShell como Administrador):
     powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\instalar_servidor.ps1
-    powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\instalar_servidor.ps1 -Porta 8090
+    ... -Escuta 192.168.78.6            # so nessa placa de rede
+    ... -Porta 8443 -PortaAntiga 8080   # padrao: HTTPS na 8443, 8080 redireciona
+    ... -Http                           # sem TLS, como era antes
+
+  O certificado e autoassinado: o navegador avisa na primeira visita. Para
+  tirar o aviso, instale C:\datalake\cert\servidor.pem como "Autoridade de
+  Certificacao Raiz Confiavel" nas maquinas (da para distribuir por GPO).
 
   Para remover depois:
     Unregister-ScheduledTask -TaskName DatalakeEstoquePagina -Confirm:$false
 #>
 param(
-    [int]$Porta = 8080,
+    [int]$Porta = 8443,
+    [int]$PortaAntiga = 8080,
+    [string]$Escuta = "0.0.0.0",
+    [switch]$Http,
     [string]$Pasta = "C:\datalake\export",
     [string]$Destino = "C:\datalake\servir_pagina.py"
 )
@@ -70,17 +81,42 @@ if ($src -ne $Destino) {
     Ok "ja esta em $Destino"
 }
 
-# --- 2. firewall ----------------------------------------------------------
-Info "Liberando a porta $Porta no firewall"
-Remove-NetFirewallRule -DisplayName "Datalake Estoque $Porta" -ErrorAction SilentlyContinue
-New-NetFirewallRule -DisplayName "Datalake Estoque $Porta" -Direction Inbound `
-    -Action Allow -Protocol TCP -LocalPort $Porta -Profile Any | Out-Null
-Ok "porta $Porta liberada (entrada TCP)"
+# --- 2. pacote do certificado --------------------------------------------
+if (-not $Http) {
+    Info "Garantindo o pacote 'cryptography' (certificado autoassinado)"
+    & $py -m pip install --quiet --disable-pip-version-check cryptography 2>&1 | Out-Null
+    & $py -c "import cryptography" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Nao consegui instalar o 'cryptography' para $py." -ForegroundColor Red
+        Write-Host "Instale na mao ('$py -m pip install cryptography') ou rode com -Http." -ForegroundColor Red
+        exit 1
+    }
+    Ok "cryptography disponivel"
+}
 
-# --- 3. tarefa agendada na inicializacao ----------------------------------
+# --- 3. firewall ----------------------------------------------------------
+$portas = @($Porta)
+if (-not $Http -and $PortaAntiga -gt 0 -and $PortaAntiga -ne $Porta) { $portas += $PortaAntiga }
+foreach ($pt in $portas) {
+    Info "Liberando a porta $pt no firewall"
+    Remove-NetFirewallRule -DisplayName "Datalake Estoque $pt" -ErrorAction SilentlyContinue
+    New-NetFirewallRule -DisplayName "Datalake Estoque $pt" -Direction Inbound `
+        -Action Allow -Protocol TCP -LocalPort $pt -Profile Any | Out-Null
+    Ok "porta $pt liberada (entrada TCP)"
+}
+
+# --- 4. tarefa agendada na inicializacao ----------------------------------
 Info "Registrando a Tarefa Agendada (inicializacao, conta SYSTEM)"
+$argumentos = "`"$Destino`" --porta $Porta --pasta `"$Pasta`" --host $Escuta"
+if ($Http) {
+    $argumentos += " --http"
+} elseif ($PortaAntiga -gt 0 -and $PortaAntiga -ne $Porta) {
+    $argumentos += " --redirecionar-de $PortaAntiga"
+} else {
+    $argumentos += " --sem-redirecionar"
+}
 $acao = New-ScheduledTaskAction -Execute $py `
-    -Argument "`"$Destino`" $Porta `"$Pasta`"" -WorkingDirectory "C:\datalake"
+    -Argument $argumentos -WorkingDirectory "C:\datalake"
 $gatilho = New-ScheduledTaskTrigger -AtStartup
 $conta = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 $cfg = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
@@ -90,19 +126,31 @@ Register-ScheduledTask -TaskName "DatalakeEstoquePagina" -Action $acao -Trigger 
     -Principal $conta -Settings $cfg -Force | Out-Null
 Ok "tarefa 'DatalakeEstoquePagina' registrada"
 
-# --- 4. sobe agora --------------------------------------------------------
+# --- 5. sobe agora --------------------------------------------------------
 Info "Iniciando o servico agora"
 Start-ScheduledTask -TaskName "DatalakeEstoquePagina"
 Start-Sleep -Seconds 2
 Ok "servico iniciado"
 
 # --- endereco de acesso ---------------------------------------------------
-$ip = (Get-NetIPAddress -AddressFamily IPv4 |
-       Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" } |
-       Sort-Object InterfaceMetric | Select-Object -First 1).IPAddress
+$ip = $Escuta
+if ($ip -eq "0.0.0.0") {
+    $ip = (Get-NetIPAddress -AddressFamily IPv4 |
+           Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" } |
+           Sort-Object InterfaceMetric | Select-Object -First 1).IPAddress
+}
+$esquema = if ($Http) { "http" } else { "https" }
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Green
 Write-Host "  PRONTO. A pagina fica no ar sozinha em toda inicializacao." -ForegroundColor Green
-Write-Host ("  Acesse na rede:  http://{0}:{1}/" -f $ip, $Porta) -ForegroundColor Green
+Write-Host ("  Acesse na rede:  {0}://{1}:{2}/" -f $esquema, $ip, $Porta) -ForegroundColor Green
+Write-Host ("  Relatorios:      {0}://{1}:{2}/relatorios/" -f $esquema, $ip, $Porta) -ForegroundColor Green
+if (-not $Http) {
+    if ($PortaAntiga -gt 0 -and $PortaAntiga -ne $Porta) {
+        Write-Host ("  A porta {0} redireciona para o HTTPS (links antigos continuam valendo)." -f $PortaAntiga)
+    }
+    Write-Host "  Certificado autoassinado: o navegador avisa na primeira visita."
+    Write-Host "  Para tirar o aviso, instale C:\datalake\cert\servidor.pem como raiz confiavel."
+}
 Write-Host "  (se a pagina abrir vazia, rode uma carga para gerar o estoque_minimo.html)"
 Write-Host "============================================================" -ForegroundColor Green
