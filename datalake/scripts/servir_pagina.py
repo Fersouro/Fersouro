@@ -762,11 +762,22 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         # entrada e parecida com a de outros portais, e quando o login recusa a
         # primeira pergunta e "quem esta atendendo nesta porta?".
         if caminho == "/versao":
+            # Data do arquivo e quantidade de relatorios: e isso que responde
+            # "o servidor ja esta com o codigo novo?" sem abrir o codigo-fonte.
+            try:
+                quando = datetime.datetime.fromtimestamp(
+                    os.path.getmtime(os.path.abspath(__file__))
+                ).strftime("%d/%m/%Y %H:%M")
+            except OSError:
+                quando = "?"
             dados = json.dumps({
                 "servidor": "datalake-servir-pagina",
                 "versao": VERSAO,
+                "atualizado_em": quando,
                 "login": bool(self.exige_login),
                 "gerador": bool(self.projeto),
+                "relatorios": [r["name"] for r in relatorios_disponiveis(self.projeto)]
+                              if self.projeto else [],
             })
             corpo = dados.encode("utf-8")
             self.send_response(200)
