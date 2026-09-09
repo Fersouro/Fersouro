@@ -340,3 +340,20 @@ def test_sem_usuario_o_servidor_explica_em_vez_de_nao_existir(tmp_path):
     assert "Ninguém está cadastrado" in corpo
     assert "CADASTRAR-USUARIO.bat" in corpo
     assert "usuarios.json" in corpo
+
+
+def test_scripts_sem_aviso_de_escape():
+    """'C:\\Program Files' numa string comum vira escape invalido: o Python 3.12
+    avisa e versoes futuras recusam."""
+    import warnings
+
+    from pathlib import Path
+
+    raiz = Path(__file__).resolve().parents[1] / "scripts"
+    for arquivo in sorted(raiz.glob("*.py")):
+        with warnings.catch_warnings(record=True) as avisos:
+            warnings.simplefilter("always")
+            compile(arquivo.read_text(encoding="utf-8"), str(arquivo), "exec")
+        assert not [a for a in avisos if issubclass(a.category, SyntaxWarning)], (
+            f"{arquivo.name}: {[str(a.message) for a in avisos]}"
+        )

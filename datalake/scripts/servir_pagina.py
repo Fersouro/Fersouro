@@ -204,7 +204,7 @@ def _hash_senha(senha, sal, iteracoes=ITERACOES):
 
 
 def comando(script, *argumentos):
-    """Sugestao de comando pronta para colar no terminal de quem esta lendo.
+    r"""Sugestao de comando pronta para colar no terminal de quem esta lendo.
 
     No PowerShell, um comando que comeca com string entre aspas e tratado como
     texto -- "C:\Program Files\...\python.exe" script.py devolve
@@ -566,7 +566,7 @@ def pagina_sem_usuarios(arquivo):
     porta e o navegador dizia so 'conexao recusada' -- que nao ajuda a
     descobrir que faltava cadastrar alguem.
     """
-    corpo = """
+    corpo = r"""
       <div class="cartao">
         <h1>%s</h1>
         <p class="sub">Ninguém está cadastrado ainda, então ninguém consegue entrar.</p>
