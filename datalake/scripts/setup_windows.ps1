@@ -299,9 +299,13 @@ Etapa 7 "Descobrindo o que existe no banco"
 if ($Gold) {
     # Reprocessa a partir da silver que ja esta em disco: mudar um modelo nao
     # justifica reler o ERP inteiro.
-    Write-Host "    Refazendo gold e exportacao (sem tocar no Oracle)" -ForegroundColor Cyan
+    Write-Host "    Refazendo gold, exportacao e relatorios (sem tocar no Oracle)" -ForegroundColor Cyan
     & $venvPython -m datalake.cli gold
     & $venvPython -m datalake.cli export
+    # Sem esta linha o modo -Gold deixava os relatorios com o conteudo da carga
+    # anterior, enquanto gold e export ficavam atualizados -- justamente o tipo
+    # de diferenca que ninguem percebe olhando a planilha.
+    & $venvPython -m datalake.cli report
     $codigo = $LASTEXITCODE
     Write-Host ""
     Write-Host "Arquivos em: $(Join-Path $lakeRootFinal 'export')"
