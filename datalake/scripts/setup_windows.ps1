@@ -195,6 +195,23 @@ if (-not (Test-Path $venvPython)) {
 if ($LASTEXITCODE -ne 0) { Parar "pip install falhou. Mande as linhas de erro acima." }
 Ok "dependencias instaladas"
 
+# O venv precisa estar apontando para ESTE projeto. Ja aconteceu de ficar uma
+# copia velha do pacote dentro do proprio venv: os relatorios em conf/ eram os
+# novos (sao lidos do disco a cada execucao) e o codigo era o antigo -- o
+# sintoma foi '$data_inicial' chegando cru no banco, com erro de sintaxe.
+$modulo = (& $venvPython -c "import datalake, os; print(os.path.dirname(os.path.dirname(datalake.__file__)))" 2>$null)
+$esperado = (Join-Path $raiz "src")
+if ($modulo -and ($modulo.Trim() -ne $esperado)) {
+    Aviso "o venv estava usando o pacote de $modulo em vez de $esperado -- refazendo"
+    & $venvPython -m pip uninstall --quiet --yes datalake 2>$null | Out-Null
+    & $venvPython -m pip install --quiet -e $raiz
+    $modulo = (& $venvPython -c "import datalake, os; print(os.path.dirname(os.path.dirname(datalake.__file__)))" 2>$null)
+    if ($modulo -and ($modulo.Trim() -ne $esperado)) {
+        Parar "O venv insiste em usar $modulo. Apague a pasta .venv do projeto e rode de novo."
+    }
+    Ok "venv apontando para o projeto"
+}
+
 # -------------------------------------------------------------------- 5. .env
 Etapa 5 "Configurando as credenciais (.env)"
 $envPath = Join-Path $raiz ".env"

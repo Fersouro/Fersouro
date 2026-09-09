@@ -363,6 +363,9 @@ button:hover { background:#1d4ed8; }
 .rodape { margin-top:26px; text-align:center; color:#64748b; font-size:12px; line-height:1.7; }
 .erro { margin-top:16px; padding:10px 12px; border-radius:8px; background:#3f1d1d;
         border:1px solid #7f1d1d; color:#fecaca; font-size:14px; }
+.erro pre { margin:8px 0 0; padding:8px; border-radius:6px; background:#2a1212;
+            overflow-x:auto; white-space:pre-wrap; word-break:break-word;
+            font-size:12px; line-height:1.45; }
 .painel { max-width:900px; margin:0 auto; padding:32px 24px 64px; }
 .topo { display:flex; align-items:baseline; justify-content:space-between; gap:16px;
         border-bottom:1px solid #1e293b; padding-bottom:16px; margin-bottom:8px; }
@@ -531,8 +534,14 @@ def pagina_gerador(usuario, relatorios, projeto, pronto=None, erro=None):
         corpo_relatorios = "".join(blocos)
 
     avisos = ""
+    if _ULTIMA_FALHA.get("metadados"):
+        avisos += ("<div class='erro'>Os campos abaixo vieram do leitor simples: o "
+                   "datalake nao respondeu.<pre>%s</pre></div>"
+                   % html.escape(str(_ULTIMA_FALHA["metadados"])))
     if erro:
-        avisos += "<div class='erro'>%s</div>" % html.escape(erro)
+        avisos += ("<div class='erro'><pre>%s</pre></div>"
+                   % html.escape(erro)) if "\n" in erro else (
+                   "<div class='erro'>%s</div>" % html.escape(erro))
     if pronto:
         # O link e montado aqui, com o nome do arquivo escapado. Trafegar HTML
         # pronto pela URL deixaria qualquer um montar um link que injeta
@@ -655,6 +664,9 @@ _CACHE_RELATORIOS = {}
 _CACHE_SEGUNDOS = 30
 
 
+_ULTIMA_FALHA = {"metadados": None}
+
+
 def relatorios_disponiveis(projeto):
     """Os relatorios que a pagina oferece, com seus campos.
 
@@ -670,38 +682,48 @@ def relatorios_disponiveis(projeto):
     if guardado and agora - guardado[0] < _CACHE_SEGUNDOS:
         return guardado[1]
 
-    dados = _relatorios_via_cli(projeto)
+    dados, falha = _relatorios_via_cli(projeto)
+    _ULTIMA_FALHA["metadados"] = falha
     if dados is None:
+        # O leitor simples nao entende campo de escolha: sem este aviso, a
+        # unica pista era um seletor virar caixa de texto na tela.
         dados = _relatorios_do_yaml(projeto)
     _CACHE_RELATORIOS[projeto] = (agora, dados)
     return dados
 
 
 def _relatorios_via_cli(projeto):
-    """-> lista de relatorios, ou None se a chamada nao funcionou."""
+    """-> (lista de relatorios, motivo da falha). Um dos dois e None."""
     ambiente = dict(os.environ)
     ambiente["PYTHONPATH"] = os.path.join(projeto, "src")
     ambiente["PYTHONIOENCODING"] = "utf-8"
+    executavel = python_do_projeto(projeto)
     try:
         saida = subprocess.run(
-            [python_do_projeto(projeto), "-m", "datalake.cli", "report", "--list", "--json"],
+            [executavel, "-m", "datalake.cli", "report", "--list", "--json"],
             cwd=projeto, env=ambiente, timeout=60,
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         )
-        if saida.returncode != 0:
-            return None
-        return json.loads(saida.stdout.decode("utf-8", "replace"))
-    except (OSError, ValueError, subprocess.TimeoutExpired):
-        return None
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, "%s: %s" % (executavel, exc)
+
+    if saida.returncode != 0:
+        erro = saida.stderr.decode("utf-8", "replace").strip().splitlines()
+        return None, "%s devolveu codigo %d: %s" % (
+            executavel, saida.returncode, erro[-1] if erro else "(sem mensagem)")
+    try:
+        return json.loads(saida.stdout.decode("utf-8", "replace")), None
+    except ValueError as exc:
+        return None, "resposta do datalake ilegivel: %s" % exc
 
 
 def _relatorios_do_yaml(projeto):
-    """Le conf/reports/*.yml sem depender de biblioteca de YAML.
+    """Reserva: le conf/reports/*.yml sem biblioteca de YAML.
 
-    O servico roda com o Python do sistema, que pode nao ter o pyyaml. Como so
-    interessam nome, titulo e os campos de parametro, um parser pequeno resolve
-    -- e, se algo fugir do formato, o relatorio ainda aparece pelo nome do
-    arquivo em vez de sumir da tela.
+    Vale quando a chamada ao datalake falha (venv quebrado, projeto incompleto).
+    Entende nome, titulo, descricao, os campos e as OPCOES de um campo de
+    escolha -- sem as opcoes, um seletor viraria caixa de texto justamente na
+    hora em que algo ja esta errado.
     """
     pasta = os.path.join(projeto, "conf", "reports")
     if not os.path.isdir(pasta):
@@ -711,27 +733,28 @@ def _relatorios_do_yaml(projeto):
     for nome_arq in sorted(os.listdir(pasta)):
         if not nome_arq.endswith((".yml", ".yaml")) or nome_arq.startswith("_"):
             continue
-        caminho = os.path.join(pasta, nome_arq)
-        dados = {"name": os.path.splitext(nome_arq)[0], "title": "", "description": "",
-                 "parameters": []}
         try:
-            with open(caminho, "r", encoding="utf-8") as f:
+            with open(os.path.join(pasta, nome_arq), "r", encoding="utf-8") as f:
                 linhas = f.read().splitlines()
         except OSError:
             continue
 
+        dados = {"name": os.path.splitext(nome_arq)[0], "title": "", "description": "",
+                 "parameters": []}
         em_parametros = False
+        recuo_parametro = None
         atual = None
+        em_opcoes = False
+
         for linha in linhas:
-            sem_comentario = linha.split("#")[0].rstrip() if not linha.strip().startswith("#") else ""
-            if not sem_comentario:
+            if linha.strip().startswith("#") or not linha.strip():
                 continue
-            recuo = len(sem_comentario) - len(sem_comentario.lstrip())
-            texto = sem_comentario.strip()
+            texto = linha.split("  #")[0].rstrip().strip()
+            recuo = len(linha) - len(linha.lstrip())
 
             if recuo == 0:
                 em_parametros = texto.startswith("parameters:")
-                atual = None
+                atual, em_opcoes, recuo_parametro = None, False, None
                 for chave in ("name", "title", "description"):
                     if texto.startswith(chave + ":"):
                         valor = texto.split(":", 1)[1].strip().strip("'\"")
@@ -739,24 +762,43 @@ def _relatorios_do_yaml(projeto):
                             dados[chave] = valor
                 continue
 
-            if em_parametros:
-                if texto.startswith("- "):
+            if not em_parametros:
+                continue
+
+            if texto.startswith("- "):
+                if recuo_parametro is None:
+                    recuo_parametro = recuo
+                if recuo == recuo_parametro:              # comeca outro campo
                     atual = {"name": "", "label": "", "type": "texto",
-                             "default": "", "optional": False}
+                             "default": "", "optional": False, "options": []}
                     dados["parameters"].append(atual)
+                    em_opcoes = False
                     texto = texto[2:].strip()
-                if atual is not None and ":" in texto:
-                    chave, _, valor = texto.partition(":")
-                    valor = valor.strip().strip("'\"")
-                    if chave.strip() in atual:
-                        atual[chave.strip()] = (
-                            valor.lower() in ("true", "sim", "yes")
-                            if chave.strip() == "optional" else valor
-                        )
+                elif em_opcoes and atual is not None:     # e uma opcao do campo
+                    atual["options"].append({"value": "", "label": ""})
+                    texto = texto[2:].strip()
+
+            if atual is None or ":" not in texto:
+                continue
+            chave, _, valor = texto.partition(":")
+            chave, valor = chave.strip(), valor.strip().strip("'\"")
+
+            if chave == "options":
+                em_opcoes = True
+                continue
+            if em_opcoes and atual["options"]:
+                if chave in ("value", "label"):
+                    atual["options"][-1][chave] = valor
+                continue
+            if chave in atual:
+                atual[chave] = (valor.lower() in ("true", "sim", "yes")
+                                if chave == "optional" else valor)
 
         dados["parameters"] = [p for p in dados["parameters"] if p.get("name")]
         for parametro in dados["parameters"]:
             parametro["label"] = parametro.get("label") or parametro["name"]
+            for opcao in parametro.get("options") or []:
+                opcao["label"] = opcao.get("label") or opcao.get("value") or ""
         itens.append(dados)
     return itens
 
@@ -799,19 +841,16 @@ def gerar_relatorio(projeto, nome, valores, destino_dir):
     texto = saida.stdout.decode("utf-8", "replace")
     arquivo = os.path.join(destino_dir, "%s.xlsx" % nome)
     if saida.returncode != 0 or not os.path.isfile(arquivo):
-        linhas = [l.strip() for l in texto.splitlines() if l.strip()]
-        # 'Falha em <relatorio>: <causa>' e a linha que explica; o resto e
-        # tabela e resumo, que nao ajudam quem esta olhando o formulario.
-        causa = next((l for l in reversed(linhas) if l.startswith("Falha em ")), None)
-        if not causa:
-            ignorado = next((l for l in reversed(linhas) if l.startswith("Ignorado ")), None)
-            if ignorado:
-                causa = ("Este relatorio depende de um modelo que ainda nao foi "
-                         "carregado no lake. Rode uma carga e tente de novo. (%s)"
-                         % ignorado)
-        if not causa:
-            causa = next((l for l in reversed(linhas) if "parametro" in l.lower()), None)
-        return False, (causa or (linhas[-1] if linhas else "falhou sem mensagem")), None
+        linhas = [l.rstrip() for l in texto.splitlines() if l.strip()]
+        ignorado = next((l for l in reversed(linhas) if l.startswith("Ignorado ")), None)
+        if ignorado:
+            return False, ("Este relatorio depende de um modelo que ainda nao foi "
+                           "carregado no lake. Rode uma carga e tente de novo.\n"
+                           + ignorado), None
+        # A mensagem inteira, nao uma linha escolhida a dedo: erro de SQL vem em
+        # varias linhas (a ultima costuma ser so o '^' apontando a coluna), e
+        # mostrar so uma delas nao diz nada a quem esta olhando o formulario.
+        return False, "\n".join(linhas[-12:]) or "falhou sem mensagem", None
     return True, "", arquivo
 
 
@@ -1012,7 +1051,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             _gerando.release()
 
         if not ok:
-            return self._ir_para("/gerar?erro=" + urllib.parse.quote(mensagem[:300]))
+            return self._ir_para("/gerar?erro=" + urllib.parse.quote(mensagem[:2000]))
 
         # Carimbo no nome: duas geracoes do mesmo relatorio com filtros
         # diferentes nao podem sobrescrever uma a outra.

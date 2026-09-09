@@ -357,3 +357,53 @@ def test_scripts_sem_aviso_de_escape():
         assert not [a for a in avisos if issubclass(a.category, SyntaxWarning)], (
             f"{arquivo.name}: {[str(a.message) for a in avisos]}"
         )
+
+
+def test_reserva_le_as_opcoes_do_campo_de_escolha(tmp_path):
+    """Sem isto, um seletor virava caixa de texto justamente quando algo ja
+    estava errado -- que foi como o problema apareceu na tela."""
+    projeto = _projeto_falso(tmp_path, """
+name: faturamento
+title: Faturamento
+parameters:
+  - name: data_inicial
+    label: Data inicial
+    type: data
+    default: inicio-do-mes
+  - name: revenda
+    label: Revenda
+    type: lista
+    default: ""
+    optional: true
+    options:
+      - value: 1
+        label: Revenda 1
+      - value: 2
+        label: Revenda 2
+      - value: ""
+        label: Consolidado (1 e 2)
+sheets:
+  - name: A
+    sql: SELECT 1
+""")
+    (relatorio,) = servir._relatorios_do_yaml(str(projeto))
+    campos = {p["name"]: p for p in relatorio["parameters"]}
+    assert set(campos) == {"data_inicial", "revenda"}
+    assert campos["data_inicial"]["options"] == []          # opcao de um nao vaza para o outro
+    assert [(o["value"], o["label"]) for o in campos["revenda"]["options"]] == [
+        ("1", "Revenda 1"), ("2", "Revenda 2"), ("", "Consolidado (1 e 2)")
+    ]
+
+    corpo = servir.pagina_gerador("fernando", [relatorio], str(projeto))
+    assert "<select name='p_revenda'>" in corpo
+    assert "Consolidado (1 e 2)" in corpo
+
+
+def test_erro_de_varias_linhas_aparece_inteiro():
+    """Erro de SQL termina numa linha com so '^'; mostrar a ultima linha deixava
+    a tela com um acento circunflexo e nada mais."""
+    erro = 'ParserException: syntax error at or near "$"\nLINE 1: SELECT ...\n        ^'
+    corpo = servir.pagina_gerador("fernando", [], "/x", erro=erro)
+    assert "<pre>" in corpo
+    assert "syntax error" in corpo
+    assert "LINE 1" in corpo
