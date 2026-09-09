@@ -377,3 +377,77 @@ sheets:
 
     capa = [c.value for linha in wb["Capa"].iter_rows(values_only=False) for c in linha]
     assert "Cliente" in capa and "Beta" in capa     # a planilha diz o que foi filtrado
+
+
+def test_atalhos_de_data_no_default():
+    """'inicio-do-mes' e 'fim-do-mes' poupam digitar a data toda geracao."""
+    cfg = ReportConfig.from_dict({
+        "name": "r",
+        "parameters": [
+            {"name": "de", "type": "data", "default": "inicio-do-mes"},
+            {"name": "ate", "type": "data", "default": "fim-do-mes"},
+            {"name": "quando", "type": "data", "default": "hoje"},
+        ],
+        "sheets": [{"name": "A", "sql": "SELECT 1"}],
+    })
+    valores = cfg.resolve_parameters()
+    hoje = dt.date.today()
+    assert valores["de"] == hoje.replace(day=1)
+    assert valores["quando"] == hoje
+    assert valores["ate"].month == hoje.month
+    assert (valores["ate"] + dt.timedelta(days=1)).month != hoje.month   # ultimo dia
+
+
+def test_fim_do_mes_em_dezembro(monkeypatch):
+    """Dezembro e o caso que quebra quem soma um mes sem pensar."""
+    import datalake.report as report
+
+    class Dezembro(dt.date):
+        @classmethod
+        def today(cls):
+            return dt.date(2026, 12, 7)
+
+    monkeypatch.setattr(report.dt, "date", Dezembro)
+    assert report._fim_do_mes() == dt.date(2026, 12, 31)
+
+
+def test_data_aceita_os_dois_formatos_e_recusa_o_resto():
+    cfg = ReportConfig.from_dict({
+        "name": "r",
+        "parameters": [{"name": "de", "type": "data", "default": "hoje"}],
+        "sheets": [{"name": "A", "sql": "SELECT 1"}],
+    })
+    assert cfg.resolve_parameters({"de": "2026-09-30"})["de"] == dt.date(2026, 9, 30)
+    assert cfg.resolve_parameters({"de": "30/09/2026"})["de"] == dt.date(2026, 9, 30)
+    with pytest.raises(ValueError, match="AAAA-MM-DD"):
+        cfg.resolve_parameters({"de": "setembro"})
+
+
+def test_periodo_filtra_pelas_datas_escolhidas(project, lake_com_gold, tmp_path):
+    _escrever_relatorio(
+        project,
+        """
+name: periodo
+parameters:
+  - name: data_inicial
+    label: Data inicial
+    type: data
+    default: inicio-do-mes
+  - name: data_final
+    label: Data final
+    type: data
+    default: fim-do-mes
+sheets:
+  - name: Pedidos
+    sql: |
+      SELECT id_pedido, vlr_total FROM pedidos_cliente
+       WHERE CAST(id_pedido AS INTEGER) BETWEEN 10 AND 11
+         AND $data_inicial <= $data_final
+""",
+        "periodo.yml",
+    )
+    resultado = [r for r in build_all(lake_com_gold, ["periodo"], tmp_path,
+                                      {"data_inicial": "2026-01-01", "data_final": "2026-01-31"})][0]
+    assert resultado.status == "success"
+    capa = [c.value for linha in load_workbook(resultado.path)["Capa"].iter_rows() for c in linha]
+    assert "01/01/2026" in capa and "31/01/2026" in capa

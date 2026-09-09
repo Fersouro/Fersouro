@@ -121,7 +121,10 @@ datalake report -r faturamento-funilaria --param competencia=2026-08
 datalake report -r faturamento-funilaria --param departamento=      # todos
 ```
 
-`type: mes` aceita `2026-09`, `09/2026`, `2026-09-17` e `atual`. Não informar o
+`type: mes` aceita `2026-09`, `09/2026`, `2026-09-17` e `atual`. `type: data`
+aceita `2026-09-30`, `30/09/2026` e os atalhos `hoje`, `ontem`,
+`inicio-do-mes`, `fim-do-mes` — que servem principalmente de `default`: na
+página o campo já aparece como seletor de data com o dia certo preenchido. Não informar o
 campo usa o `default`; informar **em branco** significa "todos" (só em
 `optional: true`) — são coisas diferentes de propósito. A capa da planilha
 registra o que foi escolhido, senão duas gerações do mesmo relatório com
@@ -211,7 +214,8 @@ uma linha por aba com o que ela mostra e quantas linhas tem. É o que responde
 | `10_margem_pecas.yml` | Margem de Peças | Mês atual, Últimos 12 meses, Detalhe |
 | `20_ordens_servico.yml` | Ordens de Serviço | Por loja e departamento, Por fonte pagadora, OS do mês |
 | `30_estoque_pecas.yml` | Estoque de Peças | Resumo por revenda, Maior valor parado, Zerados com reserva |
-| `40_faturamento_funilaria.yml` | Faturamento-Funilaria | Mês atual, Últimos 12 meses, Notas do mês, Todos os departamentos |
+| `40_funilaria_faturamento.yml` | Funilaria - Faturamento | Faturamento (uma aba) |
+| `41_funilaria_notas.yml` | Funilaria - Notas do período | Notas (uma aba) |
 | `90_vendas_demo.yml` | Vendas (demonstração) | Mensal por UF, Detalhe |
 
 O `90_vendas_demo.yml` só funciona na base fictícia do `make demo`; num lake
@@ -219,18 +223,25 @@ ligado ao ERP ele aparece como `skipped`.
 
 ---
 
-## 8. Faturamento-Funilaria: o que mudou da consulta original
+## 8. Funilaria - Faturamento: o que mudou da consulta original
 
 O modelo `sql/gold/40_faturamento_notas.sql` traduz a consulta do Apollo com o
 grão na **nota**, não no total por filial — assim a fórmula do líquido fica num
 lugar só e o relatório agrega como precisar. Diferenças propositais:
 
-1. **Sem período fixo.** O original filtrava o mês corrente; aqui a competência
-   vem da data do movimento, e o relatório filtra o mês. Mesmo número.
-2. **Empresa, revenda e departamento viram coluna**, em vez de `= 1`, `= 1` e
-   `= 410`. A aba "Mês atual" filtra 410 e reproduz a consulta; as outras áreas
-   ficam disponíveis de graça.
-3. **Séries 03 e 08 viram uma coluna `serie`**; o relatório pivota de volta.
+1. **O período virou campo.** O original filtrava
+   `BETWEEN TRUNC(SYSDATE,'MM') AND LAST_DAY(SYSDATE)` — sempre o mês corrente.
+   Agora são dois campos de data na tela, já preenchidos com o primeiro e o
+   último dia do mês: gerar sem mexer em nada dá o mesmo número da consulta.
+2. **Empresa, revenda e departamento viram campo**, em vez de `= 1`, `= 1` e
+   `= 410` cravados no SQL. Vêm preenchidos com esses valores — apagar
+   qualquer um deles significa "todos".
+3. **Séries 03 e 08 viram uma coluna `serie`** no modelo; o relatório pivota de
+   volta para as duas colunas do original.
+
+**Uma consulta, um relatório, uma aba.** O detalhe nota a nota é um relatório
+separado (`Funilaria - Notas do período`), não uma aba extra — assim cada item
+da tela corresponde a uma pergunta só.
 4. **Fora o `LEFT JOIN FAT_NOTAS_VENDEDOR`.** Ele não contribui com nenhuma
    coluna do `SELECT` nem do `GROUP BY` e, havendo mais de um vendedor na mesma
    nota, multiplicaria a linha e inflaria a soma.

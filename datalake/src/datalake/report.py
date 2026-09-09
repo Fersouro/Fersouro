@@ -83,6 +83,27 @@ _PERCENT_HINTS = ("porcentagem", "percentual", "_pct", "pct_")
 _INT_HINTS = ("qtd", "quantidade", "numero", "nro", "codigo", "id_", "_id")
 
 
+def _inicio_do_mes() -> dt.date:
+    hoje = dt.date.today()
+    return dt.date(hoje.year, hoje.month, 1)
+
+
+def _fim_do_mes() -> dt.date:
+    hoje = dt.date.today()
+    if hoje.month == 12:
+        return dt.date(hoje.year, 12, 31)
+    return dt.date(hoje.year, hoje.month + 1, 1) - dt.timedelta(days=1)
+
+
+# Aceitos no 'default' (e digitaveis no campo) de um parametro do tipo 'data'.
+_DATA_ATALHOS = {
+    "hoje": dt.date.today,
+    "inicio-do-mes": _inicio_do_mes,
+    "fim-do-mes": _fim_do_mes,
+    "ontem": lambda: dt.date.today() - dt.timedelta(days=1),
+}
+
+
 @dataclass(frozen=True)
 class Parameter:
     """Um campo que quem gera o relatorio escolhe (mes, filial, departamento).
@@ -129,12 +150,20 @@ class Parameter:
                 f"(use AAAA-MM, por exemplo 2026-09)"
             )
         if self.type == "data":
+            # Atalhos para o default: um relatorio de periodo quase sempre abre
+            # no mes corrente, e escrever a data na mao a cada geracao cansa.
+            atalho = _DATA_ATALHOS.get(texto.lower())
+            if atalho:
+                return atalho()
             for formato in ("%Y-%m-%d", "%d/%m/%Y"):
                 try:
                     return dt.datetime.strptime(texto, formato).date()
                 except ValueError:
                     continue
-            raise ValueError(f"parametro '{self.name}': '{texto}' nao e uma data (AAAA-MM-DD)")
+            raise ValueError(
+                f"parametro '{self.name}': '{texto}' nao e uma data "
+                f"(use AAAA-MM-DD, por exemplo 2026-09-30)"
+            )
         if self.type == "numero":
             try:
                 return int(texto)

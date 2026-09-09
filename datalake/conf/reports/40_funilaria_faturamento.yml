@@ -1,0 +1,62 @@
+# Funilaria - Faturamento
+#
+# Uma consulta, um relatorio, uma aba: as mesmas colunas da consulta que a
+# equipe roda no Apollo. O que era filtro fixo no SQL virou campo na tela --
+# principalmente o periodo, que ali era sempre "o mes corrente".
+name: funilaria-faturamento
+title: Funilaria - Faturamento
+description: >-
+  Faturamento liquido das notas de servico (series 03 e 08) por filial, no
+  periodo escolhido. Fonte: modelo gold 'faturamento_notas'
+  (FAT_MOVIMENTO_CAPA + GER_REVENDA, ERP Linx). Notas canceladas ficam de fora.
+
+parameters:
+  - name: data_inicial
+    label: Data inicial
+    type: data
+    default: inicio-do-mes
+  - name: data_final
+    label: Data final
+    type: data
+    default: fim-do-mes
+  - name: departamento
+    label: Departamento
+    type: numero
+    default: 410
+    optional: true          # em branco = todos
+  - name: empresa
+    label: Empresa
+    type: numero
+    default: 1
+    optional: true
+  - name: revenda
+    label: Revenda
+    type: numero
+    default: 1
+    optional: true
+
+formats:
+  cnpj: texto
+  total_liquido_serie_03: moeda
+  total_liquido_serie_08: moeda
+  total_liquido: moeda
+
+sheets:
+  - name: Faturamento
+    description: Uma linha por empresa, filial e departamento no periodo.
+    sql: |
+      SELECT empresa                                                     AS codigo_empresa,
+             revenda                                                     AS filial,
+             cnpj,
+             departamento,
+             coalesce(sum(valor_liquido) FILTER (WHERE serie = '03'), 0)  AS total_liquido_serie_03,
+             coalesce(sum(valor_liquido) FILTER (WHERE serie = '08'), 0)  AS total_liquido_serie_08,
+             coalesce(sum(valor_liquido) FILTER (WHERE serie IN ('03','08')), 0) AS total_liquido
+        FROM faturamento_notas
+       WHERE data BETWEEN $data_inicial AND $data_final
+         AND ($departamento IS NULL OR departamento = $departamento)
+         AND ($empresa      IS NULL OR empresa      = $empresa)
+         AND ($revenda      IS NULL OR revenda      = $revenda)
+       GROUP BY empresa, revenda, cnpj, departamento
+       ORDER BY empresa, revenda, cnpj
+    totals: [total_liquido_serie_03, total_liquido_serie_08, total_liquido]

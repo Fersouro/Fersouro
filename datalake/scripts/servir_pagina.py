@@ -428,6 +428,32 @@ def _tabela(arquivos, prefixo):
             "<th class='n'>Atualizado</th></tr>%s</table>" % "".join(linhas))
 
 
+def _padrao_visivel(tipo, bruto):
+    """Traduz o default do YAML para o que o campo mostra.
+
+    'inicio-do-mes' e util no arquivo, mas quem abre a pagina quer ver a data
+    -- e poder trocar so o dia sem decorar palavra-chave nenhuma.
+    """
+    texto = str(bruto or "").strip().lower()
+    hoje = datetime.date.today()
+    if tipo == "mes" and texto in ("atual", "corrente", "hoje"):
+        return hoje.strftime("%Y-%m")
+    if tipo == "data":
+        if texto == "hoje":
+            return hoje.strftime("%Y-%m-%d")
+        if texto == "ontem":
+            return (hoje - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+        if texto == "inicio-do-mes":
+            return hoje.replace(day=1).strftime("%Y-%m-%d")
+        if texto == "fim-do-mes":
+            if hoje.month == 12:
+                fim = datetime.date(hoje.year, 12, 31)
+            else:
+                fim = datetime.date(hoje.year, hoje.month + 1, 1) - datetime.timedelta(days=1)
+            return fim.strftime("%Y-%m-%d")
+    return str(bruto or "")
+
+
 def pagina_gerador(usuario, relatorios, projeto, pronto=None, erro=None):
     """Formulario: escolhe o relatorio, os filtros, e gera a planilha na hora."""
     if not projeto:
@@ -447,13 +473,12 @@ def pagina_gerador(usuario, relatorios, projeto, pronto=None, erro=None):
                 tipo = parametro.get("type", "texto")
                 dica = {"mes": "AAAA-MM (ex.: 2026-09)", "data": "AAAA-MM-DD",
                         "numero": "número"}.get(tipo, "")
-                padrao = parametro.get("default", "")
-                if tipo == "mes" and str(padrao).lower() in ("atual", "corrente", "hoje"):
-                    padrao = datetime.date.today().strftime("%Y-%m")
+                padrao = _padrao_visivel(tipo, parametro.get("default", ""))
                 opcional = " (opcional)" if parametro.get("optional") else ""
                 campos.append(
-                    "<label>%s%s</label><input name='p_%s' value='%s' placeholder='%s'>"
+                    "<label>%s%s</label><input type='%s' name='p_%s' value='%s' placeholder='%s'>"
                     % (html.escape(parametro["label"]), opcional,
+                       "date" if tipo == "data" else "text",
                        html.escape(parametro["name"]), html.escape(str(padrao)),
                        html.escape(dica))
                 )
