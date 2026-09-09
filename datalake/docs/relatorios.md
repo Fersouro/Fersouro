@@ -155,6 +155,7 @@ uma linha por aba com o que ela mostra e quantas linhas tem. É o que responde
 | `10_margem_pecas.yml` | Margem de Peças | Mês atual, Últimos 12 meses, Detalhe |
 | `20_ordens_servico.yml` | Ordens de Serviço | Por loja e departamento, Por fonte pagadora, OS do mês |
 | `30_estoque_pecas.yml` | Estoque de Peças | Resumo por revenda, Maior valor parado, Zerados com reserva |
+| `40_faturamento_funilaria.yml` | Faturamento-Funilaria | Mês atual, Últimos 12 meses, Notas do mês, Todos os departamentos |
 | `90_vendas_demo.yml` | Vendas (demonstração) | Mensal por UF, Detalhe |
 
 O `90_vendas_demo.yml` só funciona na base fictícia do `make demo`; num lake
@@ -162,7 +163,32 @@ ligado ao ERP ele aparece como `skipped`.
 
 ---
 
-## 7. Solução de problemas
+## 7. Faturamento-Funilaria: o que mudou da consulta original
+
+O modelo `sql/gold/40_faturamento_notas.sql` traduz a consulta do Apollo com o
+grão na **nota**, não no total por filial — assim a fórmula do líquido fica num
+lugar só e o relatório agrega como precisar. Diferenças propositais:
+
+1. **Sem período fixo.** O original filtrava o mês corrente; aqui a competência
+   vem da data do movimento, e o relatório filtra o mês. Mesmo número.
+2. **Empresa, revenda e departamento viram coluna**, em vez de `= 1`, `= 1` e
+   `= 410`. A aba "Mês atual" filtra 410 e reproduz a consulta; as outras áreas
+   ficam disponíveis de graça.
+3. **Séries 03 e 08 viram uma coluna `serie`**; o relatório pivota de volta.
+4. **Fora o `LEFT JOIN FAT_NOTAS_VENDEDOR`.** Ele não contribui com nenhuma
+   coluna do `SELECT` nem do `GROUP BY` e, havendo mais de um vendedor na mesma
+   nota, multiplicaria a linha e inflaria a soma.
+5. **`GER_REVENDA` ligada por empresa E revenda.** O original ligava só por
+   revenda, o que bastava com `EMPRESA = 1` fixo; sem esse filtro, ligar só pela
+   revenda repetiria a nota uma vez por empresa.
+
+> **Ponto em aberto:** na fórmula original, a subtração do ICMS desonerado
+> aparece **duas vezes** (o primeiro e o quarto `CASE` são idênticos). Parece
+> engano de cópia, mas mexer nisso mudaria o número que a empresa usa hoje —
+> então foi mantida, com o bloco marcado no SQL. Para cobrar uma vez só, apague
+> o bloco entre os comentários `>>> bloco repetido do original <<<`.
+
+## 8. Solução de problemas
 
 | Sintoma | Causa | O que fazer |
 |---|---|---|
@@ -175,7 +201,7 @@ ligado ao ERP ele aparece como `skipped`.
 
 ---
 
-## 8. Onde está o código
+## 9. Onde está o código
 
 - `src/datalake/report.py` — leitura do YAML, execução das abas, escrita do xlsx.
 - `conf/reports/*.yml` — as definições.
