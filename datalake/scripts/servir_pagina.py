@@ -196,6 +196,7 @@ JANELA_BLOQUEIO = 300        # segundos
 ITERACOES = 240_000
 COOKIE = "datalake_sessao"
 TITULO = "Relatorios Tterrasul"
+VERSAO = "2026.09.09"
 
 
 def _hash_senha(senha, sal, iteracoes=ITERACOES):
@@ -374,7 +375,8 @@ td.n { text-align:right; color:#94a3b8; white-space:nowrap; }
 
 
 def _moldura(titulo, corpo, centro=True):
-    return ("<!doctype html><html lang='pt-br'><head><meta charset='utf-8'>"
+    return ("<!doctype html><html lang='pt-br'><!-- datalake-servir-pagina -->"
+            "<head><meta charset='utf-8'>"
             "<meta name='viewport' content='width=device-width,initial-scale=1'>"
             "<title>%s</title><style>%s</style></head><body>%s</body></html>"
             % (html.escape(titulo), _ESTILO,
@@ -717,6 +719,24 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     # ---- rotas ------------------------------------------------------------
     def do_GET(self):
         caminho = self._caminho()
+
+        # Identificacao do servidor, sem login e sem dado nenhum: a tela de
+        # entrada e parecida com a de outros portais, e quando o login recusa a
+        # primeira pergunta e "quem esta atendendo nesta porta?".
+        if caminho == "/versao":
+            dados = json.dumps({
+                "servidor": "datalake-servir-pagina",
+                "versao": VERSAO,
+                "login": bool(self.exige_login),
+                "gerador": bool(self.projeto),
+            })
+            corpo = dados.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(corpo)))
+            self.end_headers()
+            return self.wfile.write(corpo)
+
         if self.exige_login:
             if caminho == "/entrar":
                 consulta = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
