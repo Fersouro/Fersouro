@@ -1,0 +1,54 @@
+# Ordens de servico encerradas: producao por loja, departamento e fonte pagadora.
+name: ordens_servico
+title: Ordens de Servico
+description: >-
+  OS encerradas por loja, departamento e fonte pagadora, com o tempo que cada
+  uma ficou aberta. Fonte: modelo gold 'ordens_servico'. Filtre o departamento
+  410 para reproduzir a consulta de funilaria.
+
+formats:
+  dias_em_aberto: numero
+
+sheets:
+  - name: Por loja e departamento
+    description: Quantidade de OS e tempo medio em aberto, no mes corrente.
+    sql: |
+      SELECT loja, departamento,
+             count(*)                             AS qtd_os,
+             round(avg(dias_em_aberto), 1)        AS dias_em_aberto_medio,
+             max(dias_em_aberto)                  AS dias_em_aberto_maximo
+        FROM ordens_servico
+       WHERE competencia = date_trunc('month', current_date)
+       GROUP BY loja, departamento
+       ORDER BY qtd_os DESC
+    totals: [qtd_os]
+    formats:
+      dias_em_aberto_medio: numero
+      dias_em_aberto_maximo: inteiro
+    highlights:
+      - when: dias_em_aberto_medio > 15
+        style: amarelo
+        scope: dias_em_aberto_medio
+
+  - name: Por fonte pagadora
+    description: Quem pagou a OS (garantia, cliente, seguradora) no mes corrente.
+    sql: |
+      SELECT fonte_pagadora, count(*) AS qtd_os
+        FROM ordens_servico
+       WHERE competencia = date_trunc('month', current_date)
+       GROUP BY fonte_pagadora
+       ORDER BY qtd_os DESC
+    totals: [qtd_os]
+
+  - name: OS do mes
+    description: Uma linha por OS encerrada no mes corrente.
+    sql: |
+      SELECT loja, departamento, nro_os, emissao, encerramento, dias_em_aberto,
+             cliente, fonte_pagadora
+        FROM ordens_servico
+       WHERE competencia = date_trunc('month', current_date)
+       ORDER BY encerramento DESC, nro_os
+    highlights:
+      - when: dias_em_aberto > 30
+        style: vermelho
+        scope: dias_em_aberto

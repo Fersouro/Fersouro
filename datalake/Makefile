@@ -1,7 +1,7 @@
 PY ?= python3
 export PYTHONPATH := src
 
-.PHONY: help setup init demo run ingest silver gold quality catalog state test clean
+.PHONY: help setup init demo run ingest silver gold quality catalog report state test clean
 
 help:            ## Mostra esta ajuda
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -38,6 +38,9 @@ quality:         ## Testes de qualidade
 
 catalog:         ## Atualiza data/lake.duckdb
 	$(PY) -m datalake.cli catalog
+
+report:          ## Gera os relatorios .xlsx de conf/reports/
+	$(PY) -m datalake.cli report
 
 state:           ## Watermarks e ultimas execucoes
 	$(PY) -m datalake.cli state

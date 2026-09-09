@@ -1,0 +1,60 @@
+# Margem de pecas: a consulta gerencial do Apollo, em planilha.
+#
+# Tres abas porque sao tres perguntas diferentes: como esta o mes, como ele se
+# compara com os anteriores, e o que compoe o numero.
+name: margem_pecas
+title: Margem de Pecas
+description: >-
+  Venda, custo, lucro e desconto por filial e departamento, ja liquidos de
+  devolucao. Fonte: modelo gold 'margem_pecas' (ERP Linx, schema CNP).
+  O total de cada aba respeita o filtro aplicado na propria planilha.
+
+formats:
+  lucro_porcentagem: percentual
+  desconto_porcentagem: percentual
+  venda_total: moeda
+  custo: moeda
+  lucro: moeda
+  valor_desconto: moeda
+  devolucao_total: moeda
+  devolucao_lucro: moeda
+
+sheets:
+  - name: Mes atual
+    description: Filial e departamento no mes corrente, do maior lucro para o menor.
+    sql: |
+      SELECT filial, departamento, venda_total, custo, lucro,
+             lucro_porcentagem, valor_desconto, desconto_porcentagem,
+             devolucao_total
+        FROM margem_pecas
+       WHERE competencia = date_trunc('month', current_date)
+       ORDER BY lucro DESC
+    totals: [venda_total, custo, lucro, valor_desconto, devolucao_total]
+    highlights:
+      - when: lucro < 0
+        style: vermelho
+      - when: desconto_porcentagem > 10
+        style: amarelo
+        scope: desconto_porcentagem
+
+  - name: Ultimos 12 meses
+    description: Evolucao mensal consolidada de todas as filiais.
+    sql: |
+      SELECT competencia,
+             sum(venda_total)                                          AS venda_total,
+             sum(custo)                                                AS custo,
+             sum(lucro)                                                AS lucro,
+             round(sum(lucro) / nullif(sum(venda_total), 0) * 100, 2)   AS lucro_porcentagem,
+             sum(devolucao_total)                                      AS devolucao_total
+        FROM margem_pecas
+       WHERE competencia >= date_trunc('month', current_date) - INTERVAL 11 MONTH
+       GROUP BY competencia
+       ORDER BY competencia DESC
+    totals: [venda_total, custo, lucro, devolucao_total]
+    highlights:
+      - when: lucro < 0
+        style: vermelho
+
+  - name: Detalhe
+    description: Uma linha por filial, departamento e competencia (base dos resumos).
+    model: margem_pecas

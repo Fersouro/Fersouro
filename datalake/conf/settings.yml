@@ -28,6 +28,13 @@ export:
   format: xlsx            # xlsx | csv
   dir: ${DATALAKE_ROOT:-./data}/export
 
+# Relatorios prontos para ler: um .xlsx por arquivo de conf/reports/, com abas
+# de resumo e detalhe, numero formatado, total e destaque. Rodam ao fim do
+# 'datalake run', depois da exportacao.
+reports:
+  enabled: true
+  dir: ${DATALAKE_ROOT:-./data}/export/relatorios
+
 logging:
   level: INFO
   dir: ./logs

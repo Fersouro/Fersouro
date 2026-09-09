@@ -1,0 +1,25 @@
+# Relatorio da base ficticia do 'make demo'. Em producao ele e ignorado com
+# status 'skipped' -- os modelos fato_vendas/vendas_mensais_uf nao existem la.
+# Serve para ver a camada de relatorios funcionando antes de ligar no Oracle.
+name: vendas_demo
+title: Vendas (demonstracao)
+description: >-
+  Vendas da base de demonstracao, por competencia e UF. Gerado pelo 'make demo';
+  num lake ligado ao ERP este relatorio aparece como 'skipped'.
+
+sheets:
+  - name: Mensal por UF
+    description: Pedidos, itens e valor vendido por mes e estado.
+    model: vendas_mensais_uf
+    totals: [qtd_pedidos, qtd_itens, vlr_vendido]
+    formats:
+      vlr_vendido: moeda
+      ticket_medio_item: moeda
+
+  - name: Detalhe
+    description: Uma linha por item de pedido.
+    model: fato_vendas
+    formats:
+      vlr_item: moeda
+      vlr_unitario: moeda
+      vlr_pedido: moeda

@@ -160,6 +160,7 @@ instalar o Instant Client. Use `thick_mode: true` só se precisar de
 | `gold` | Silver → gold (`-m modelo` roda um só) |
 | `quality` | Testes de qualidade sobre a silver |
 | `catalog` | Atualiza `data/lake.duckdb` |
+| `report` | Gera os relatorios `.xlsx` de `conf/reports/` (`--list` so lista) |
 | `run` | Pipeline completo, tudo com o mesmo `run_id` |
 | `state` | Watermarks e histórico de execuções |
 | `reset` | Zera o watermark de uma tabela (força recarga total) |
@@ -258,6 +259,46 @@ Acima de 1.048.575 linhas o `.xlsx` nao comporta: o comando grava o que cabe e
 avisa quantas linhas ficaram de fora. Nesse caso use `-f csv`, ou leia o Parquet
 direto no Power BI, que nao tem esse limite.
 
+## Relatorios em Excel
+
+O `export` grava o modelo cru. Um **relatorio** e um `.xlsx` com varias abas
+(resumo e detalhe), numero formatado como numero se le (R$, %, dd/mm/aaaa),
+linha de total e destaque no que precisa de atencao -- pronto para mandar para
+alguem. Cada arquivo em `conf/reports/*.yml` vira um relatorio:
+
+```yaml
+name: margem_pecas                      # vira margem_pecas.xlsx
+title: Margem de Pecas
+formats:
+  lucro_porcentagem: percentual         # moeda | numero | inteiro | data | ...
+sheets:
+  - name: Mes atual
+    sql: |
+      SELECT filial, venda_total, lucro FROM margem_pecas
+       WHERE competencia = date_trunc('month', current_date)
+    totals: [venda_total, lucro]        # linha TOTAL com SUBTOTAL, segue o filtro
+    highlights:
+      - when: lucro < 0                 # condicao SQL; pinta a linha
+        style: vermelho
+  - name: Detalhe
+    model: margem_pecas                 # atalho para SELECT * FROM margem_pecas
+```
+
+```bash
+datalake report                      # todos
+datalake report -r margem_pecas      # so um
+datalake report --list               # o que existe
+```
+
+O SQL enxerga as mesmas views da gold (silver `<fonte>__<tabela>` e os modelos
+gold pelo nome), entao nao ha linguagem nova. A primeira aba e sempre a **Capa**:
+titulo, quando foi gerado e o que tem em cada aba.
+
+Os arquivos saem em `data/export/relatorios/` e o `datalake run` os regera ao
+fim de cada carga. Desligue com `reports.enabled: false` no `settings.yml`.
+Relatorio que cita modelo ainda nao carregado sai como `skipped`, sem derrubar
+a execucao. Detalhes em [`docs/relatorios.md`](docs/relatorios.md).
+
 ## Consumindo no Power BI
 
 **Opção 1 — pasta Parquet (mais simples).** Obter Dados → Parquet → aponte para
@@ -298,6 +339,7 @@ agendador consegue distinguir sucesso de falha sem ninguém ler log.
 datalake/
 ├── conf/
 │   ├── settings.yml            # raiz do lake, memória, compressão, log
+│   ├── reports/                # relatorios .xlsx definidos em YAML
 │   └── sources/
 │       ├── oracle_erp.yml      # a fonte de verdade
 │       └── demo_erp.yml        # base fictícia para testes
@@ -310,6 +352,7 @@ datalake/
 │   ├── duck.py                 # conexões DuckDB e snake_case
 │   ├── connectors/             # oracle, duckdb
 │   ├── layers/                 # bronze, silver, gold
+│   ├── report.py               # relatorios .xlsx (conf/reports/*.yml)
 │   ├── quality/                # testes declarativos
 │   ├── state/                  # watermarks e histórico
 │   ├── storage/                # layout de pastas e escrita Parquet

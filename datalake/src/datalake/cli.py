@@ -12,6 +12,7 @@
     datalake quality                   testes de qualidade sobre a silver
     datalake catalog                   atualiza data/lake.duckdb
     datalake export                    grava os modelos gold em xlsx/csv
+    datalake report                    gera os relatorios .xlsx de conf/reports/
     datalake run                       pipeline completo
     datalake state                     watermarks e ultimas execucoes
     datalake query "SELECT ..."        consulta rapida no lake
@@ -452,6 +453,42 @@ def cmd_export(args, settings: Settings) -> int:
     return EXIT_FAILED if falhas else EXIT_OK
 
 
+def cmd_report(args, settings: Settings) -> int:
+    """Gera os relatorios de conf/reports/ como pastas de trabalho .xlsx."""
+    from .report import build_all, load_reports
+
+    if getattr(args, "list", False):
+        relatorios = load_reports(settings)
+        print(
+            _table(
+                ["RELATORIO", "TITULO", "ABAS", "ARQUIVO"],
+                [
+                    [r.name, r.title, str(len(r.sheets)), r.path.name if r.path else "-"]
+                    for r in relatorios
+                ],
+            )
+        )
+        print(f"\n{len(relatorios)} relatorio(s) em conf/reports/")
+        return EXIT_OK
+
+    destino = Path(args.reports_out) if getattr(args, "reports_out", None) else settings.reports_dir
+    resultados = build_all(settings, getattr(args, "report", None), destino)
+    print(
+        _table(
+            ["RELATORIO", "STATUS", "LINHAS", "ARQUIVO", "OBS"],
+            [
+                [r.report, r.status, f"{r.rows:,}", r.path.name if r.path else "-",
+                 (r.message or "")[:60]]
+                for r in resultados
+            ],
+        )
+    )
+    ok, falhas = _summary(resultados)
+    if resultados:
+        print(f"\nRelatorios: {ok} ok, {falhas} com falha -> {destino}")
+    return EXIT_FAILED if falhas else EXIT_OK
+
+
 def cmd_run(args, settings: Settings) -> int:
     """Pipeline completo: bronze -> silver -> gold -> qualidade -> catalogo."""
     run_id = new_run_id()
@@ -466,8 +503,11 @@ def cmd_run(args, settings: Settings) -> int:
         ("QUALIDADE", cmd_quality),
         ("CATALOGO", cmd_catalog),
         ("EXPORTACAO", cmd_export),
+        ("RELATORIOS", cmd_report),
     ):
         if name == "EXPORTACAO" and not settings.export_enabled:
+            continue
+        if name == "RELATORIOS" and not settings.reports_enabled:
             continue
         if name == "GOLD" and args.skip_gold:
             continue
@@ -639,6 +679,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-f", "--format", choices=["xlsx", "csv"], help="padrao: settings.yml")
     p.add_argument("--out", help="pasta de destino")
     p.set_defaults(func=cmd_export)
+
+    p = sub.add_parser("report", help="gera os relatorios .xlsx de conf/reports/")
+    p.add_argument("-r", "--report", action="append", help="relatorio (pode repetir)")
+    p.add_argument("--out", dest="reports_out", help="pasta de destino")
+    p.add_argument("--list", action="store_true", help="so lista os relatorios")
+    p.set_defaults(func=cmd_report)
 
     p = sub.add_parser("run", help="pipeline completo")
     add_source_args(p)

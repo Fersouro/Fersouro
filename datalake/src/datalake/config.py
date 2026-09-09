@@ -236,6 +236,8 @@ class Settings:
     export_enabled: bool
     export_format: str
     export_dir: Path
+    reports_enabled: bool
+    reports_dir: Path
     sources: tuple[SourceConfig, ...]
 
     # ---- caminhos das camadas ----
@@ -279,6 +281,7 @@ def load_settings(project_root: Path | str | None = None) -> Settings:
     runtime = data.get("runtime") or {}
     logging_cfg = data.get("logging") or {}
     export_cfg = data.get("export") or {}
+    reports_cfg = data.get("reports") or {}
 
     def _path(value: str | None, default: str) -> Path:
         candidate = Path(value or default)
@@ -305,6 +308,8 @@ def load_settings(project_root: Path | str | None = None) -> Settings:
         export_enabled=bool(export_cfg.get("enabled", True)),
         export_format=str(export_cfg.get("format") or "xlsx").lower(),
         export_dir=_path(export_cfg.get("dir"), "./data/export"),
+        reports_enabled=bool(reports_cfg.get("enabled", True)),
+        reports_dir=_path(reports_cfg.get("dir"), "./data/export/relatorios"),
         log_level=str(logging_cfg.get("level") or "INFO").upper(),
         log_dir=_path(logging_cfg.get("dir"), "./logs"),
         sources=tuple(sources),

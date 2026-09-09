@@ -18,5 +18,12 @@ cobre a fonte do número, arquitetura, a lista de mínimos, a página, o servido
 a automação, como atualizar o código, solução de problemas e as pendências
 abertas (seção 11).
 
+## Relatórios em Excel
+
+Pastas de trabalho `.xlsx` com abas de resumo/detalhe, formatação, totais e
+destaques, definidas em YAML (`datalake/conf/reports/*.yml`) e geradas ao fim de
+cada carga. **Antes de mexer nos relatórios, leia
+`datalake/docs/relatorios.md`.**
+
 Roda no servidor da empresa em `C:\datalake`. Não é preciso "transferir" nada
 entre sessões: o contexto está no código e nessa documentação.
