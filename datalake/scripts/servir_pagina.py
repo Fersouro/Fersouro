@@ -12,6 +12,11 @@ arquivo pelo compartilhamento.
     python servir_pagina.py --http 8080              # como era antes, sem TLS
     python servir_pagina.py --criar-usuario fernando # cadastra quem pode entrar
     python servir_pagina.py --verificar-senha fernando  # confere a senha sem navegador
+    python servir_pagina.py --projeto C:\\datalake\\app\\...\\datalake   # onde gerar
+
+Em /gerar a pagina monta a planilha na hora: escolhe-se o relatorio e o
+periodo, e o servidor chama o 'datalake report' do projeto (com o python do
+venv dele) em vez de servir o arquivo da ultima carga.
 
 O acesso pede usuario e senha: a pasta export tem margem e faturamento, e sem
 login qualquer maquina da rede baixa tudo. As senhas ficam com hash pbkdf2 em
@@ -51,6 +56,7 @@ import functools
 import threading
 import http.server
 import socketserver
+import subprocess
 import urllib.parse
 
 PORTA_HTTPS = 8443
@@ -355,6 +361,15 @@ th, td { text-align:left; padding:9px 8px; border-bottom:1px solid #1e293b; font
 th { color:#94a3b8; font-weight:600; font-size:12px; text-transform:uppercase; }
 td.n { text-align:right; color:#94a3b8; white-space:nowrap; }
 .vazio { color:#64748b; font-size:14px; padding:10px 0; }
+.grade { display:grid; gap:16px; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); }
+.cartao-lista { background:#131c31; border:1px solid #1e293b; border-radius:10px; padding:18px 20px; }
+.cartao-lista h3 { margin:0 0 4px; font-size:16px; color:#fff; }
+.cartao-lista .sub { margin:0; font-size:13px; }
+.cartao-lista button { margin-top:16px; }
+.aviso { margin:12px 0; padding:10px 12px; border-radius:8px; background:#12331f;
+         border:1px solid #14532d; color:#bbf7d0; font-size:14px; }
+.acao { display:inline-block; margin:0 0 4px; padding:10px 16px; border-radius:8px;
+        background:#2563eb; color:#fff !important; font-weight:600; text-decoration:none; }
 """
 
 
@@ -398,6 +413,73 @@ def _tabela(arquivos, prefixo):
             "<th class='n'>Atualizado</th></tr>%s</table>" % "".join(linhas))
 
 
+def pagina_gerador(usuario, relatorios, projeto, pronto=None, erro=None):
+    """Formulario: escolhe o relatorio, os filtros, e gera a planilha na hora."""
+    if not projeto:
+        corpo_relatorios = (
+            "<p class='vazio'>Nao encontrei o projeto do datalake em "
+            "<code>C:\\datalake\\app</code>. Suba o servidor com "
+            "<code>--projeto &lt;caminho&gt;</code> apontando para a pasta que tem o "
+            "<code>pyproject.toml</code>.</p>"
+        )
+    elif not relatorios:
+        corpo_relatorios = "<p class='vazio'>Nenhum relatório definido em conf/reports/.</p>"
+    else:
+        blocos = []
+        for item in relatorios:
+            campos = []
+            for parametro in item["parameters"]:
+                tipo = parametro.get("type", "texto")
+                dica = {"mes": "AAAA-MM (ex.: 2026-09)", "data": "AAAA-MM-DD",
+                        "numero": "número"}.get(tipo, "")
+                padrao = parametro.get("default", "")
+                if tipo == "mes" and str(padrao).lower() in ("atual", "corrente", "hoje"):
+                    padrao = datetime.date.today().strftime("%Y-%m")
+                opcional = " (opcional)" if parametro.get("optional") else ""
+                campos.append(
+                    "<label>%s%s</label><input name='p_%s' value='%s' placeholder='%s'>"
+                    % (html.escape(parametro["label"]), opcional,
+                       html.escape(parametro["name"]), html.escape(str(padrao)),
+                       html.escape(dica))
+                )
+            blocos.append(
+                """<form class="cartao-lista" method="post" action="/gerar">
+                     <input type="hidden" name="relatorio" value="%s">
+                     <h3>%s</h3><p class="sub">%s</p>%s
+                     <button type="submit">Gerar planilha</button>
+                   </form>"""
+                % (html.escape(item["name"]),
+                   html.escape(item.get("title") or item["name"]),
+                   html.escape(item.get("description") or ""),
+                   "".join(campos))
+            )
+        corpo_relatorios = "".join(blocos)
+
+    avisos = ""
+    if erro:
+        avisos += "<div class='erro'>%s</div>" % html.escape(erro)
+    if pronto:
+        # O link e montado aqui, com o nome do arquivo escapado. Trafegar HTML
+        # pronto pela URL deixaria qualquer um montar um link que injeta
+        # conteudo na pagina de quem clicasse.
+        avisos += ("<div class='aviso'>Planilha pronta: "
+                   "<a href='/relatorios/gerados/%s'>%s</a></div>"
+                   % (urllib.parse.quote(pronto), html.escape(pronto)))
+
+    corpo = """
+      <div class="painel">
+        <div class="topo">
+          <div><h1>Gerar relatório</h1>
+               <p class="sub">Escolha o relatório e o período. A planilha é gerada
+                  na hora, com o dado que está no lake agora.</p></div>
+          <a href="/">Voltar</a>
+        </div>
+        %s
+        <div class="grade">%s</div>
+      </div>""" % (avisos, corpo_relatorios)
+    return _moldura("Gerar relatório", corpo, centro=False)
+
+
 def pagina_painel(usuario, pasta):
     def listar(sub):
         caminho = os.path.join(pasta, sub) if sub else pasta
@@ -427,6 +509,7 @@ def pagina_painel(usuario, pasta):
           <a href="/sair">Sair</a>
         </div>
         %s
+        <p><a class="acao" href="/gerar">Gerar relatório agora</a></p>
         <h2>Relatórios</h2>
         %s
         <h2>Modelos exportados</h2>
@@ -435,6 +518,151 @@ def pagina_painel(usuario, pasta):
                    _tabela(listar("relatorios"), "/relatorios/"),
                    _tabela(listar(""), "/"))
     return _moldura(TITULO, corpo, centro=False)
+
+
+# ------------------------------------------------------------------ gerador
+#
+# A pagina nao gera a planilha dentro deste processo: ela chama o
+# 'datalake report' do projeto, com o python do venv dele. Assim o servico (que
+# roda com o Python do sistema, como SYSTEM) nao precisa ter duckdb, openpyxl e
+# companhia instalados, e a geracao usa exatamente o mesmo codigo da carga.
+
+GERACAO_TIMEOUT = 900        # 15 min: relatorio grande sobre o lake inteiro
+_gerando = threading.Lock()
+
+
+def achar_projeto(raiz):
+    """Pasta do projeto (a que tem pyproject.toml) dentro de <raiz>\app."""
+    for base in (os.path.join(raiz, "app"), raiz):
+        if not os.path.isdir(base):
+            continue
+        for atual, _dirs, arquivos in os.walk(base):
+            if "pyproject.toml" in arquivos and os.path.isdir(os.path.join(atual, "conf")):
+                return atual
+    return None
+
+
+def python_do_projeto(projeto):
+    """O python do venv do projeto; sem venv, o mesmo que roda este script."""
+    for relativo in (r".venv\Scripts\python.exe", ".venv/bin/python"):
+        candidato = os.path.join(projeto, relativo)
+        if os.path.isfile(candidato):
+            return candidato
+    return sys.executable
+
+
+def relatorios_disponiveis(projeto):
+    """Le conf/reports/*.yml sem depender de biblioteca de YAML.
+
+    O servico roda com o Python do sistema, que pode nao ter o pyyaml. Como so
+    interessam nome, titulo e os campos de parametro, um parser pequeno resolve
+    -- e, se algo fugir do formato, o relatorio ainda aparece pelo nome do
+    arquivo em vez de sumir da tela.
+    """
+    pasta = os.path.join(projeto, "conf", "reports")
+    if not os.path.isdir(pasta):
+        return []
+
+    itens = []
+    for nome_arq in sorted(os.listdir(pasta)):
+        if not nome_arq.endswith((".yml", ".yaml")) or nome_arq.startswith("_"):
+            continue
+        caminho = os.path.join(pasta, nome_arq)
+        dados = {"name": os.path.splitext(nome_arq)[0], "title": "", "description": "",
+                 "parameters": []}
+        try:
+            with open(caminho, "r", encoding="utf-8") as f:
+                linhas = f.read().splitlines()
+        except OSError:
+            continue
+
+        em_parametros = False
+        atual = None
+        for linha in linhas:
+            sem_comentario = linha.split("#")[0].rstrip() if not linha.strip().startswith("#") else ""
+            if not sem_comentario:
+                continue
+            recuo = len(sem_comentario) - len(sem_comentario.lstrip())
+            texto = sem_comentario.strip()
+
+            if recuo == 0:
+                em_parametros = texto.startswith("parameters:")
+                atual = None
+                for chave in ("name", "title", "description"):
+                    if texto.startswith(chave + ":"):
+                        valor = texto.split(":", 1)[1].strip().strip("'\"")
+                        if valor and valor not in (">-", "|", ">"):
+                            dados[chave] = valor
+                continue
+
+            if em_parametros:
+                if texto.startswith("- "):
+                    atual = {"name": "", "label": "", "type": "texto",
+                             "default": "", "optional": False}
+                    dados["parameters"].append(atual)
+                    texto = texto[2:].strip()
+                if atual is not None and ":" in texto:
+                    chave, _, valor = texto.partition(":")
+                    valor = valor.strip().strip("'\"")
+                    if chave.strip() in atual:
+                        atual[chave.strip()] = (
+                            valor.lower() in ("true", "sim", "yes")
+                            if chave.strip() == "optional" else valor
+                        )
+
+        dados["parameters"] = [p for p in dados["parameters"] if p.get("name")]
+        for parametro in dados["parameters"]:
+            parametro["label"] = parametro.get("label") or parametro["name"]
+        itens.append(dados)
+    return itens
+
+
+def _limpar_antigos(pasta, dias=7):
+    """Apaga planilha gerada sob demanda com mais de uma semana."""
+    limite = time.time() - dias * 86400
+    try:
+        nomes = os.listdir(pasta)
+    except OSError:
+        return
+    for nome in nomes:
+        caminho = os.path.join(pasta, nome)
+        try:
+            if os.path.isfile(caminho) and os.path.getmtime(caminho) < limite:
+                os.remove(caminho)
+        except OSError:
+            pass
+
+
+def gerar_relatorio(projeto, nome, valores, destino_dir):
+    """Roda 'datalake report -r <nome> --param ...'. -> (ok, mensagem, arquivo)."""
+    comando = [python_do_projeto(projeto), "-m", "datalake.cli", "report",
+               "-r", nome, "--out", destino_dir]
+    for chave, valor in valores.items():
+        if str(valor).strip():
+            comando += ["--param", "%s=%s" % (chave, valor)]
+
+    ambiente = dict(os.environ)
+    ambiente["PYTHONPATH"] = os.path.join(projeto, "src")
+    ambiente["PYTHONIOENCODING"] = "utf-8"
+    try:
+        saida = subprocess.run(comando, cwd=projeto, env=ambiente, timeout=GERACAO_TIMEOUT,
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    except subprocess.TimeoutExpired:
+        return False, "A geracao passou de %d minutos e foi interrompida." % (GERACAO_TIMEOUT // 60), None
+    except OSError as exc:
+        return False, "Nao consegui chamar o datalake: %s" % exc, None
+
+    texto = saida.stdout.decode("utf-8", "replace")
+    arquivo = os.path.join(destino_dir, "%s.xlsx" % nome)
+    if saida.returncode != 0 or not os.path.isfile(arquivo):
+        linhas = [l.strip() for l in texto.splitlines() if l.strip()]
+        # 'Falha em <relatorio>: <causa>' e a linha que explica; o resto e
+        # tabela e resumo, que nao ajudam quem esta olhando o formulario.
+        causa = next((l for l in reversed(linhas) if l.startswith("Falha em ")), None)
+        if not causa:
+            causa = next((l for l in reversed(linhas) if "parametro" in l.lower()), None)
+        return False, (causa or (linhas[-1] if linhas else "falhou sem mensagem")), None
+    return True, "", arquivo
 
 
 # ---------------------------------------------------------------- handlers
@@ -446,6 +674,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     usuarios = None          # ArquivoUsuarios
     sessoes = None
     exige_login = True
+    projeto = None           # pasta do datalake, para gerar relatorio na hora
 
     # ---- sessao -----------------------------------------------------------
     def _token(self):
@@ -504,6 +733,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._ir_para("/entrar?proximo=" + urllib.parse.quote(self.path))
         if caminho in ("/", "/index.html"):
             return self._html(pagina_painel(usuario, self.directory))
+        if caminho == "/gerar":
+            consulta = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            # So aceita como "pronto" um arquivo que existe mesmo na pasta de
+            # gerados -- o nome vem da URL, e URL qualquer um escreve.
+            pronto = os.path.basename((consulta.get("pronto") or [""])[0])
+            if pronto and not os.path.isfile(
+                    os.path.join(self.directory, "relatorios", "gerados", pronto)):
+                pronto = None
+            return self._html(pagina_gerador(
+                usuario,
+                relatorios_disponiveis(self.projeto) if self.projeto else [],
+                self.projeto,
+                pronto=pronto,
+                erro=(consulta.get("erro") or [None])[0],
+            ))
         super().do_GET()
 
     def do_HEAD(self):
@@ -513,6 +757,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().do_HEAD()
 
     def do_POST(self):
+        if self._caminho() == "/gerar":
+            return self._gerar()
         if not self.exige_login or self._caminho() != "/entrar":
             return self.send_error(405)
 
@@ -538,6 +784,59 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         seguro = "; Secure" if getattr(self.server, "tls", False) else ""
         self._ir_para(proximo, "%s=%s; Path=/; HttpOnly; SameSite=Lax%s"
                                % (COOKIE, self.sessoes.criar(nome), seguro))
+
+    def _gerar(self):
+        """POST /gerar: roda o datalake e devolve o link da planilha."""
+        if self._usuario() is None:
+            return self._ir_para("/entrar?proximo=/gerar")
+        if not self.projeto:
+            return self._ir_para("/gerar?erro=" + urllib.parse.quote(
+                "Projeto do datalake nao encontrado; suba o servidor com --projeto."))
+
+        tamanho = min(int(self.headers.get("Content-Length") or 0), 16384)
+        campos = urllib.parse.parse_qs(self.rfile.read(tamanho).decode("utf-8", "replace"))
+        nome = (campos.get("relatorio") or [""])[0].strip()
+
+        # So aceita nome que existe no conf/reports: o resto vira argumento de
+        # linha de comando, e nome vindo de formulario nao entra nisso solto.
+        conhecidos = {r["name"] for r in relatorios_disponiveis(self.projeto)}
+        if nome not in conhecidos:
+            return self._ir_para("/gerar?erro=" + urllib.parse.quote(
+                "Relatorio '%s' nao existe." % nome))
+
+        valores = {
+            chave[2:]: valor[0]
+            for chave, valor in campos.items()
+            if chave.startswith("p_") and valor
+        }
+
+        # Uma geracao por vez: sao varias consultas sobre o lake inteiro, e
+        # cinco pedidos simultaneos so fariam todo mundo esperar mais.
+        if not _gerando.acquire(blocking=False):
+            return self._ir_para("/gerar?erro=" + urllib.parse.quote(
+                "Ja existe uma geracao em andamento. Tente de novo em instantes."))
+        try:
+            destino = os.path.join(self.directory, "relatorios", "gerados")
+            os.makedirs(destino, exist_ok=True)
+            _limpar_antigos(destino)
+            ok, mensagem, arquivo = gerar_relatorio(self.projeto, nome, valores, destino)
+        finally:
+            _gerando.release()
+
+        if not ok:
+            return self._ir_para("/gerar?erro=" + urllib.parse.quote(mensagem[:300]))
+
+        # Carimbo no nome: duas geracoes do mesmo relatorio com filtros
+        # diferentes nao podem sobrescrever uma a outra.
+        carimbo = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        final = os.path.join(destino, "%s_%s.xlsx" % (nome, carimbo))
+        try:
+            os.replace(arquivo, final)
+        except OSError:
+            final = arquivo
+        return self._ir_para(
+            "/gerar?pronto=" + urllib.parse.quote(os.path.basename(final))
+        )
 
     def end_headers(self):
         # A pagina e regerada a cada carga. Sem isso o navegador mostra a
@@ -591,7 +890,7 @@ def parse_args(argv):
         "host": "0.0.0.0", "porta": None, "pasta": None, "tls": True,
         "cert": None, "chave": None, "redirecionar_de": PORTA_HTTP,
         "usuarios": None, "sem_login": False, "criar_usuario": None,
-        "verificar_senha": None,
+        "verificar_senha": None, "projeto": None,
     }
     # A Tarefa Agendada antiga chama "servir_pagina.py 8080 C:\datalake\export".
     # Se ela continuar valendo depois de uma atualizacao de codigo, tem que
@@ -621,6 +920,8 @@ def parse_args(argv):
             if proximo and proximo.isdigit():
                 opcoes["porta"] = int(proximo); i += 1
             i += 1
+        elif a == "--projeto":
+            opcoes["projeto"] = proximo; i += 2
         elif a == "--usuarios":
             opcoes["usuarios"] = proximo; i += 2
         elif a == "--criar-usuario":
@@ -723,10 +1024,12 @@ def main():
     esquema = "https" if ctx else "http"
     # Uma classe por execucao: e assim que a lista de usuarios e as sessoes
     # chegam ao handler, que o http.server instancia a cada requisicao.
+    projeto = opcoes["projeto"] or achar_projeto(raiz)
     configurado = type("HandlerConfigurado", (Handler,), {
         "usuarios": usuarios,
         "sessoes": Sessoes(),
         "exige_login": not opcoes["sem_login"],
+        "projeto": projeto,
     })
     handler = functools.partial(configurado, directory=pasta)
     socketserver.TCPServer.allow_reuse_address = True
@@ -753,6 +1056,10 @@ def main():
             print("Porta %d redireciona para o %s." % (opcoes["redirecionar_de"], esquema.upper()))
         if ctx:
             print("Certificado autoassinado: o navegador avisa na primeira visita.")
+        if projeto:
+            print("Gerador de relatorio ligado (projeto em %s)." % projeto)
+        else:
+            print("Sem gerador: nao achei o projeto do datalake. Use --projeto <caminho>.")
         if opcoes["sem_login"]:
             print("SEM LOGIN: qualquer maquina da rede baixa as planilhas.")
         else:

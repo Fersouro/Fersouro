@@ -6,19 +6,25 @@ description: >-
   uma ficou aberta. Fonte: modelo gold 'ordens_servico'. Filtre o departamento
   410 para reproduzir a consulta de funilaria.
 
+parameters:
+  - name: competencia
+    label: Competencia
+    type: mes
+    default: atual
+
 formats:
   dias_em_aberto: numero
 
 sheets:
   - name: Por loja e departamento
-    description: Quantidade de OS e tempo medio em aberto, no mes corrente.
+    description: Quantidade de OS e tempo medio em aberto, na competencia escolhida.
     sql: |
       SELECT loja, departamento,
              count(*)                             AS qtd_os,
              round(avg(dias_em_aberto), 1)        AS dias_em_aberto_medio,
              max(dias_em_aberto)                  AS dias_em_aberto_maximo
         FROM ordens_servico
-       WHERE competencia = date_trunc('month', current_date)
+       WHERE competencia = $competencia
        GROUP BY loja, departamento
        ORDER BY qtd_os DESC
     totals: [qtd_os]
@@ -31,22 +37,22 @@ sheets:
         scope: dias_em_aberto_medio
 
   - name: Por fonte pagadora
-    description: Quem pagou a OS (garantia, cliente, seguradora) no mes corrente.
+    description: Quem pagou a OS (garantia, cliente, seguradora) na competencia escolhida.
     sql: |
       SELECT fonte_pagadora, count(*) AS qtd_os
         FROM ordens_servico
-       WHERE competencia = date_trunc('month', current_date)
+       WHERE competencia = $competencia
        GROUP BY fonte_pagadora
        ORDER BY qtd_os DESC
     totals: [qtd_os]
 
   - name: OS do mes
-    description: Uma linha por OS encerrada no mes corrente.
+    description: Uma linha por OS encerrada na competencia escolhida.
     sql: |
       SELECT loja, departamento, nro_os, emissao, encerramento, dias_em_aberto,
              cliente, fonte_pagadora
         FROM ordens_servico
-       WHERE competencia = date_trunc('month', current_date)
+       WHERE competencia = $competencia
        ORDER BY encerramento DESC, nro_os
     highlights:
       - when: dias_em_aberto > 30

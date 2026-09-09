@@ -7,18 +7,30 @@ description: >-
   Vendas da base de demonstracao, por competencia e UF. Gerado pelo 'make demo';
   num lake ligado ao ERP este relatorio aparece como 'skipped'.
 
+parameters:
+  - name: competencia
+    label: Competencia
+    type: mes
+    default: atual
+
 sheets:
   - name: Mensal por UF
-    description: Pedidos, itens e valor vendido por mes e estado.
-    model: vendas_mensais_uf
+    description: Pedidos, itens e valor vendido por mes e estado, ate a competencia.
+    sql: |
+      SELECT * FROM vendas_mensais_uf
+       WHERE competencia <= $competencia
+       ORDER BY competencia DESC, vlr_vendido DESC
     totals: [qtd_pedidos, qtd_itens, vlr_vendido]
     formats:
       vlr_vendido: moeda
       ticket_medio_item: moeda
 
   - name: Detalhe
-    description: Uma linha por item de pedido.
-    model: fato_vendas
+    description: Itens de pedido da competencia escolhida.
+    sql: |
+      SELECT * FROM fato_vendas
+       WHERE competencia = $competencia
+       ORDER BY dt_pedido DESC, id_pedido
     formats:
       vlr_item: moeda
       vlr_unitario: moeda

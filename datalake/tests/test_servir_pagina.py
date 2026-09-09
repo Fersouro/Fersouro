@@ -5,6 +5,7 @@ O script vive em scripts/ (nao e pacote), entao o teste o carrega pelo caminho.
 
 from __future__ import annotations
 
+import datetime as dt
 import importlib.util
 import socket
 from pathlib import Path
@@ -205,3 +206,84 @@ def test_arquivo_de_usuarios_sumindo_nao_quebra(tmp_path):
     assert leitor.atuais()
     arquivo.unlink()
     assert leitor.atuais() == {}          # ninguem entra, mas o servidor segue de pe
+
+
+# ------------------------------------------------------------------ gerador
+
+
+def _projeto_falso(tmp_path, yml):
+    projeto = tmp_path / "app" / "Fersouro-x" / "datalake"
+    (projeto / "conf" / "reports").mkdir(parents=True)
+    (projeto / "pyproject.toml").write_text("[project]\nname='datalake'\n", encoding="utf-8")
+    (projeto / "conf" / "reports" / "10_teste.yml").write_text(yml, encoding="utf-8")
+    return projeto
+
+
+def test_acha_o_projeto_dentro_de_app(tmp_path):
+    projeto = _projeto_falso(tmp_path, "name: teste\nsheets:\n  - name: A\n    sql: SELECT 1\n")
+    assert servir.achar_projeto(str(tmp_path)) == str(projeto)
+
+
+def test_sem_projeto_a_pagina_nao_quebra(tmp_path):
+    assert servir.achar_projeto(str(tmp_path)) is None
+    corpo = servir.pagina_gerador("fernando", [], None)
+    assert "Nao encontrei o projeto" in corpo
+
+
+def test_le_nome_titulo_e_parametros_do_yaml(tmp_path):
+    """O servico roda com o Python do sistema, que pode nao ter pyyaml."""
+    projeto = _projeto_falso(tmp_path, """
+name: faturamento-funilaria
+title: Faturamento-Funilaria
+description: Notas de servico da funilaria.
+parameters:
+  - name: competencia
+    label: Competencia
+    type: mes
+    default: atual
+  - name: departamento
+    label: Departamento
+    type: numero
+    default: 410
+    optional: true
+sheets:
+  - name: Mes atual
+    sql: SELECT 1
+""")
+    (relatorio,) = servir.relatorios_disponiveis(str(projeto))
+    assert relatorio["name"] == "faturamento-funilaria"
+    assert relatorio["title"] == "Faturamento-Funilaria"
+    assert [p["name"] for p in relatorio["parameters"]] == ["competencia", "departamento"]
+    assert relatorio["parameters"][1]["optional"] is True
+    assert relatorio["parameters"][0]["default"] == "atual"
+
+
+def test_yaml_sem_parametros(tmp_path):
+    projeto = _projeto_falso(tmp_path, "name: estoque\ntitle: Estoque\nsheets:\n  - name: A\n    sql: SELECT 1\n")
+    (relatorio,) = servir.relatorios_disponiveis(str(projeto))
+    assert relatorio["parameters"] == []
+
+
+def test_formulario_traz_o_mes_corrente_preenchido(tmp_path):
+    projeto = _projeto_falso(tmp_path, """
+name: r
+title: Relatorio
+parameters:
+  - name: competencia
+    label: Competencia
+    type: mes
+    default: atual
+sheets:
+  - name: A
+    sql: SELECT 1
+""")
+    corpo = servir.pagina_gerador("fernando", servir.relatorios_disponiveis(str(projeto)), str(projeto))
+    assert dt.date.today().strftime("%Y-%m") in corpo
+    assert "name='p_competencia'" in corpo
+
+
+def test_pagina_do_gerador_escapa_o_que_vem_de_fora(tmp_path):
+    corpo = servir.pagina_gerador("fernando", [], "/x", pronto="<script>x</script>.xlsx",
+                                  erro="<script>y</script>")
+    assert "<script>" not in corpo
+    assert "&lt;script&gt;" in corpo

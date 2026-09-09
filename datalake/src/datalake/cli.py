@@ -461,9 +461,11 @@ def cmd_report(args, settings: Settings) -> int:
         relatorios = load_reports(settings)
         print(
             _table(
-                ["RELATORIO", "TITULO", "ABAS", "ARQUIVO"],
+                ["RELATORIO", "TITULO", "ABAS", "PARAMETROS", "ARQUIVO"],
                 [
-                    [r.name, r.title, str(len(r.sheets)), r.path.name if r.path else "-"]
+                    [r.name, r.title, str(len(r.sheets)),
+                     ", ".join(p.name for p in r.parameters) or "-",
+                     r.path.name if r.path else "-"]
                     for r in relatorios
                 ],
             )
@@ -471,8 +473,20 @@ def cmd_report(args, settings: Settings) -> int:
         print(f"\n{len(relatorios)} relatorio(s) em conf/reports/")
         return EXIT_OK
 
+    valores: dict[str, str] = {}
+    for bruto in getattr(args, "param", None) or []:
+        nome, sep, valor = bruto.partition("=")
+        if not sep:
+            print(f"Parametro '{bruto}' sem valor. Use --param nome=valor.")
+            return EXIT_CONFIG
+        valores[nome.strip()] = valor
+
     destino = Path(args.reports_out) if getattr(args, "reports_out", None) else settings.reports_dir
-    resultados = build_all(settings, getattr(args, "report", None), destino)
+    try:
+        resultados = build_all(settings, getattr(args, "report", None), destino, valores)
+    except ValueError as exc:
+        print(exc)
+        return EXIT_CONFIG
     print(
         _table(
             ["RELATORIO", "STATUS", "LINHAS", "ARQUIVO", "OBS"],
@@ -486,6 +500,11 @@ def cmd_report(args, settings: Settings) -> int:
     ok, falhas = _summary(resultados)
     if resultados:
         print(f"\nRelatorios: {ok} ok, {falhas} com falha -> {destino}")
+    # A causa por ultimo, e nao so na tabela: quem chama este comando de fora
+    # (a pagina de geracao) mostra a ultima linha da saida para quem pediu.
+    for r in resultados:
+        if r.status == "failed":
+            print(f"Falha em {r.report}: {r.message}")
     return EXIT_FAILED if falhas else EXIT_OK
 
 
@@ -684,6 +703,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("-r", "--report", action="append", help="relatorio (pode repetir)")
     p.add_argument("--out", dest="reports_out", help="pasta de destino")
     p.add_argument("--list", action="store_true", help="so lista os relatorios")
+    p.add_argument("--param", action="append", metavar="NOME=VALOR",
+                   help="valor de um parametro do relatorio (pode repetir)")
     p.set_defaults(func=cmd_report)
 
     p = sub.add_parser("run", help="pipeline completo")

@@ -87,7 +87,63 @@ As mesmas views da camada gold:
 
 ---
 
-## 3. Formatos
+## 3. Parâmetros (o gerador da página)
+
+Um relatório pode declarar campos que quem gera escolhe — é o que transforma a
+página num **gerador**, em vez de uma lista de arquivos prontos:
+
+```yaml
+parameters:
+  - name: competencia
+    label: Competência
+    type: mes             # mes | data | numero | texto
+    default: atual        # 'atual' = mês corrente
+  - name: departamento
+    label: Departamento
+    type: numero
+    default: 410
+    optional: true        # apagado no formulário = todos
+```
+
+No SQL o valor entra como **parâmetro nomeado do DuckDB**, nunca concatenado —
+é isso que impede o formulário da página de injetar SQL:
+
+```sql
+SELECT ... FROM faturamento_notas
+ WHERE competencia = $competencia
+   AND ($departamento IS NULL OR departamento = $departamento)
+```
+
+Pela linha de comando:
+
+```bash
+datalake report -r faturamento-funilaria --param competencia=2026-08
+datalake report -r faturamento-funilaria --param departamento=      # todos
+```
+
+`type: mes` aceita `2026-09`, `09/2026`, `2026-09-17` e `atual`. Não informar o
+campo usa o `default`; informar **em branco** significa "todos" (só em
+`optional: true`) — são coisas diferentes de propósito. A capa da planilha
+registra o que foi escolhido, senão duas gerações do mesmo relatório com
+filtros diferentes ficam indistinguíveis depois de salvas.
+
+### Pela página, em `/gerar`
+
+`https://192.168.78.6:8443/gerar` lista os relatórios com seus campos e um botão
+**Gerar planilha**. O servidor não gera dentro do próprio processo: ele chama o
+`datalake report` do projeto, com o Python do venv dele — o mesmo código da
+carga, sem exigir duckdb/openpyxl no Python do serviço.
+
+- O arquivo sai em `export/relatorios/gerados/<relatorio>_<data-hora>.xlsx`, com
+  carimbo no nome: duas gerações do mesmo relatório com filtros diferentes não
+  se sobrescrevem, e a planilha da carga automática não é tocada.
+- Uma geração por vez (as consultas varrem o lake); pedidos simultâneos recebem
+  "já existe uma geração em andamento".
+- Arquivos gerados sob demanda com mais de 7 dias são apagados sozinhos.
+- Só entram nomes de relatório que existem em `conf/reports/` — o que vem do
+  formulário nunca vira caminho nem argumento solto.
+
+## 4. Formatos
 
 Formato nomeado ou máscara do Excel crua (`'#,##0.000'` etc.).
 
@@ -120,7 +176,7 @@ Quando a inferência errar, declare em `formats` — o declarado sempre vence.
 
 ---
 
-## 4. Totais e destaques
+## 5. Totais e destaques
 
 **Totais** usam `=SUBTOTAL(109;...)`, não `SOMA`: com o filtro da planilha
 ligado, o total passa a ser o do que está sendo mostrado — que é o número que a
@@ -140,7 +196,7 @@ highlights:
 
 ---
 
-## 5. A capa
+## 6. A capa
 
 A primeira aba é sempre a **Capa**: título, descrição, data/hora da geração e
 uma linha por aba com o que ela mostra e quantas linhas tem. É o que responde
@@ -148,7 +204,7 @@ uma linha por aba com o que ela mostra e quantas linhas tem. É o que responde
 
 ---
 
-## 6. Relatórios que já existem
+## 7. Relatórios que já existem
 
 | Arquivo | Relatório | Abas |
 |---|---|---|
@@ -163,7 +219,7 @@ ligado ao ERP ele aparece como `skipped`.
 
 ---
 
-## 7. Faturamento-Funilaria: o que mudou da consulta original
+## 8. Faturamento-Funilaria: o que mudou da consulta original
 
 O modelo `sql/gold/40_faturamento_notas.sql` traduz a consulta do Apollo com o
 grão na **nota**, não no total por filial — assim a fórmula do líquido fica num
@@ -188,7 +244,7 @@ lugar só e o relatório agrega como precisar. Diferenças propositais:
 > então foi mantida, com o bloco marcado no SQL. Para cobrar uma vez só, apague
 > o bloco entre os comentários `>>> bloco repetido do original <<<`.
 
-## 8. Solução de problemas
+## 9. Solução de problemas
 
 | Sintoma | Causa | O que fazer |
 |---|---|---|
@@ -198,11 +254,15 @@ lugar só e o relatório agrega como precisar. Diferenças propositais:
 | `R$` numa coluna que é código | o nome bateu com uma pista de dinheiro | declare `formats: {coluna: inteiro}` (ou `texto`) |
 | Porcentagem 100× maior | valor entre 0 e 1 com formato `percentual` | use `fracao` |
 | Muitas linhas | limite físico do xlsx (1.048.575 por aba) | agregue na aba, use `limit`, ou leve o detalhe pelo `datalake export -f csv` |
+| Página `/gerar` diz que não achou o projeto | o servidor não encontrou o `pyproject.toml` sob `C:\datalake\app` | suba o serviço com `--projeto <caminho da pasta datalake>` |
+| "Já existe uma geração em andamento" | outra pessoa está gerando | espere terminar; é uma de cada vez, de propósito |
+| Parâmetro recusado | formato do valor | a mensagem diz o formato esperado (ex.: `AAAA-MM`) |
 
 ---
 
-## 9. Onde está o código
+## 10. Onde está o código
 
-- `src/datalake/report.py` — leitura do YAML, execução das abas, escrita do xlsx.
+- `src/datalake/report.py` — leitura do YAML, parâmetros, execução, escrita do xlsx.
+- `scripts/servir_pagina.py` — a página `/gerar` e a chamada do `datalake report`.
 - `conf/reports/*.yml` — as definições.
 - `tests/test_report.py` — testes (inferência de formato, capa, totais, destaque).

@@ -8,6 +8,8 @@ from decimal import Decimal
 import pytest
 from openpyxl import load_workbook
 
+from openpyxl import load_workbook
+
 from datalake.config import ConfigError
 from datalake.report import (
     FORMATS,
@@ -277,3 +279,101 @@ def test_limit_declarado_nao_dispara_contagem(lake_com_gold):
         assert len(linhas) == 1 and total == 1     # limite pedido nao e aviso
     finally:
         con.close()
+
+
+# ---------------------------------------------------------------- parametros
+
+
+def _cfg_com_parametros(**extra):
+    base = {
+        "name": "r",
+        "parameters": [
+            {"name": "competencia", "label": "Competencia", "type": "mes", "default": "atual"},
+            {"name": "departamento", "type": "numero", "default": 410, "optional": True},
+        ],
+        "sheets": [{"name": "A", "sql": "SELECT 1"}],
+    }
+    base.update(extra)
+    return ReportConfig.from_dict(base)
+
+
+def test_competencia_atual_vira_primeiro_dia_do_mes():
+    hoje = dt.date.today()
+    valores = _cfg_com_parametros().resolve_parameters()
+    assert valores["competencia"] == dt.date(hoje.year, hoje.month, 1)
+
+
+def test_competencia_aceita_os_formatos_que_a_pessoa_digita():
+    cfg = _cfg_com_parametros()
+    esperado = dt.date(2026, 3, 1)
+    for texto in ("2026-03", "03/2026", "2026-03-17"):
+        assert cfg.resolve_parameters({"competencia": texto})["competencia"] == esperado
+
+
+def test_competencia_invalida_diz_o_formato():
+    with pytest.raises(ValueError, match="AAAA-MM"):
+        _cfg_com_parametros().resolve_parameters({"competencia": "agosto"})
+
+
+def test_numero_invalido_e_recusado():
+    with pytest.raises(ValueError, match="nao e um numero"):
+        _cfg_com_parametros().resolve_parameters({"departamento": "funilaria"})
+
+
+def test_opcional_em_branco_vira_nulo():
+    """Departamento vazio no formulario = todos os departamentos."""
+    assert _cfg_com_parametros().resolve_parameters({"departamento": ""})["departamento"] is None
+
+
+def test_obrigatorio_sem_valor_e_sem_default_falha():
+    cfg = ReportConfig.from_dict({
+        "name": "r",
+        "parameters": [{"name": "filial", "type": "texto"}],
+        "sheets": [{"name": "A", "sql": "SELECT 1"}],
+    })
+    with pytest.raises(ValueError, match="obrigatorio"):
+        cfg.resolve_parameters({})
+
+
+def test_parametro_que_o_relatorio_nao_tem():
+    with pytest.raises(ValueError, match="inexistente"):
+        _cfg_com_parametros().resolve_parameters({"filial": "1"})
+
+
+def test_tipo_de_parametro_invalido_no_yaml():
+    with pytest.raises(ConfigError, match="tipo 'cor' invalido"):
+        ReportConfig.from_dict({
+            "name": "r",
+            "parameters": [{"name": "x", "type": "cor"}],
+            "sheets": [{"name": "A", "sql": "SELECT 1"}],
+        })
+
+
+def test_parametro_filtra_de_verdade_e_aparece_na_capa(project, lake_com_gold, tmp_path):
+    """O valor vai como parametro do DuckDB ($nome), nao concatenado no SQL."""
+    _escrever_relatorio(
+        project,
+        """
+name: por_cliente
+parameters:
+  - name: cliente
+    label: Cliente
+    type: texto
+    default: Alfa
+sheets:
+  - name: Resumo
+    sql: SELECT nome, vlr_total FROM pedidos_cliente WHERE nome = $cliente
+""",
+        "por_cliente.yml",
+    )
+    resultados = {r.report: r for r in build_all(lake_com_gold, ["por_cliente"],
+                                                 tmp_path, {"cliente": "Beta"})}
+    resultado = resultados["por_cliente"]
+    assert resultado.status == "success"
+
+    wb = load_workbook(resultado.path)
+    nomes = [wb["Resumo"].cell(l, 1).value for l in range(2, wb["Resumo"].max_row + 1)]
+    assert nomes == ["Beta"]                       # filtrou pelo valor pedido
+
+    capa = [c.value for linha in wb["Capa"].iter_rows(values_only=False) for c in linha]
+    assert "Cliente" in capa and "Beta" in capa     # a planilha diz o que foi filtrado

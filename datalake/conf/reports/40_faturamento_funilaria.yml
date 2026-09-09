@@ -10,6 +10,17 @@ description: >-
   separado por serie -- 03 e 08. Fonte: modelo gold 'faturamento_notas'
   (FAT_MOVIMENTO_CAPA + GER_REVENDA, ERP Linx). Notas canceladas ficam de fora.
 
+parameters:
+  - name: competencia
+    label: Competencia
+    type: mes
+    default: atual
+  - name: departamento
+    label: Departamento
+    type: numero
+    default: 410
+    optional: true        # em branco = todos os departamentos
+
 formats:
   cnpj: texto
   numero_nota_fiscal: texto
@@ -21,7 +32,7 @@ formats:
 
 sheets:
   - name: Mes atual
-    description: O numero da consulta do Apollo -- por filial, no mes corrente.
+    description: O numero da consulta do Apollo -- por filial, na competencia escolhida.
     sql: |
       SELECT empresa,
              revenda,
@@ -33,8 +44,8 @@ sheets:
              coalesce(sum(valor_liquido) FILTER (WHERE serie IN ('03','08')), 0) AS total_liquido,
              count(*)           FILTER (WHERE serie IN ('03','08')) AS qtd_notas
         FROM faturamento_notas
-       WHERE departamento = 410
-         AND competencia = date_trunc('month', current_date)
+       WHERE ($departamento IS NULL OR departamento = $departamento)
+         AND competencia = $competencia
        GROUP BY empresa, revenda, filial, cnpj, departamento
        ORDER BY empresa, revenda
     totals: [total_liquido_serie_03, total_liquido_serie_08, total_liquido, qtd_notas]
@@ -48,8 +59,9 @@ sheets:
              coalesce(sum(valor_liquido) FILTER (WHERE serie IN ('03','08')), 0) AS total_liquido,
              count(*)           FILTER (WHERE serie IN ('03','08')) AS qtd_notas
         FROM faturamento_notas
-       WHERE departamento = 410
-         AND competencia >= date_trunc('month', current_date) - INTERVAL 11 MONTH
+       WHERE ($departamento IS NULL OR departamento = $departamento)
+         AND competencia >  $competencia - INTERVAL 12 MONTH
+         AND competencia <= $competencia
        GROUP BY competencia
        ORDER BY competencia DESC
     totals: [total_liquido_serie_03, total_liquido_serie_08, total_liquido, qtd_notas]
@@ -61,9 +73,9 @@ sheets:
              total_nota, valor_liquido,
              total_nota - valor_liquido AS deducoes
         FROM faturamento_notas
-       WHERE departamento = 410
+       WHERE ($departamento IS NULL OR departamento = $departamento)
          AND serie IN ('03','08')
-         AND competencia = date_trunc('month', current_date)
+         AND competencia = $competencia
        ORDER BY data DESC, numero_nota_fiscal
     totals: [total_nota, valor_liquido, deducoes]
     formats:
@@ -73,17 +85,17 @@ sheets:
         style: amarelo
 
   - name: Todos os departamentos
-    description: A funilaria ao lado das demais areas, no mes corrente.
+    description: A funilaria ao lado das demais areas, na competencia escolhida.
     sql: |
       SELECT departamento,
              coalesce(sum(valor_liquido) FILTER (WHERE serie = '03'), 0)        AS total_liquido_serie_03,
              coalesce(sum(valor_liquido) FILTER (WHERE serie = '08'), 0)        AS total_liquido_serie_08,
              coalesce(sum(valor_liquido) FILTER (WHERE serie IN ('03','08')), 0) AS total_liquido
         FROM faturamento_notas
-       WHERE competencia = date_trunc('month', current_date)
+       WHERE competencia = $competencia
        GROUP BY departamento
        ORDER BY total_liquido DESC
     totals: [total_liquido_serie_03, total_liquido_serie_08, total_liquido]
     highlights:
-      - when: departamento = 410
+      - when: departamento = coalesce($departamento, 410)
         style: azul

@@ -84,6 +84,71 @@ _INT_HINTS = ("qtd", "quantidade", "numero", "nro", "codigo", "id_", "_id")
 
 
 @dataclass(frozen=True)
+class Parameter:
+    """Um campo que quem gera o relatorio escolhe (mes, filial, departamento).
+
+    O valor vai para o SQL como parametro nomeado do DuckDB ($nome), nunca por
+    concatenacao: assim o formulario da pagina nao consegue injetar SQL.
+    """
+
+    name: str
+    label: str
+    type: str = "texto"          # mes | data | numero | texto
+    default: Any = None
+    optional: bool = False
+
+    def resolve(self, bruto: Any) -> Any:
+        """Converte o que veio do formulario (ou o default) para o tipo certo.
+
+        Nao informado (None) e informado em branco sao coisas diferentes: quem
+        nao mandou o campo quer o default; quem apagou o 410 do formulario quer
+        'todos os departamentos', e cair no default de novo ignoraria o pedido.
+        """
+        if bruto is None:
+            bruto = self.default
+        vazio = bruto is None or (isinstance(bruto, str) and not bruto.strip())
+        if vazio:
+            if self.optional:
+                return None
+            raise ValueError(f"parametro '{self.name}' ({self.label}) e obrigatorio")
+
+        texto = str(bruto).strip()
+        if self.type == "mes":
+            # 'atual' e o caso comum: o relatorio do mes corrente, sem digitar.
+            if texto.lower() in ("atual", "corrente", "hoje"):
+                hoje = dt.date.today()
+                return dt.date(hoje.year, hoje.month, 1)
+            for formato in ("%Y-%m", "%m/%Y", "%Y-%m-%d"):
+                try:
+                    achado = dt.datetime.strptime(texto, formato).date()
+                    return dt.date(achado.year, achado.month, 1)
+                except ValueError:
+                    continue
+            raise ValueError(
+                f"parametro '{self.name}': '{texto}' nao e uma competencia "
+                f"(use AAAA-MM, por exemplo 2026-09)"
+            )
+        if self.type == "data":
+            for formato in ("%Y-%m-%d", "%d/%m/%Y"):
+                try:
+                    return dt.datetime.strptime(texto, formato).date()
+                except ValueError:
+                    continue
+            raise ValueError(f"parametro '{self.name}': '{texto}' nao e uma data (AAAA-MM-DD)")
+        if self.type == "numero":
+            try:
+                return int(texto)
+            except ValueError:
+                try:
+                    return float(texto)
+                except ValueError:
+                    raise ValueError(
+                        f"parametro '{self.name}': '{texto}' nao e um numero"
+                    ) from None
+        return texto
+
+
+@dataclass(frozen=True)
 class Highlight:
     """Regra de destaque: uma condicao SQL e a cor que ela pinta."""
 
@@ -110,7 +175,19 @@ class ReportConfig:
     description: str | None = None
     sheets: tuple[SheetConfig, ...] = ()
     formats: dict[str, str] = field(default_factory=dict)
+    parameters: tuple[Parameter, ...] = ()
     path: Path | None = None
+
+    def resolve_parameters(self, valores: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Valores prontos para o DuckDB, com os defaults preenchidos."""
+        valores = valores or {}
+        desconhecidos = set(valores) - {p.name for p in self.parameters}
+        if desconhecidos:
+            raise ValueError(
+                f"[{self.name}] parametro inexistente: {', '.join(sorted(desconhecidos))}. "
+                f"Existem: {', '.join(p.name for p in self.parameters) or '(nenhum)'}"
+            )
+        return {p.name: p.resolve(valores.get(p.name)) for p in self.parameters}
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], path: Path | None = None) -> "ReportConfig":
@@ -123,6 +200,26 @@ class ReportConfig:
             raise ConfigError(f"Relatorio '{name}' sem 'sheets'")
 
         formats = {k.lower(): str(v) for k, v in (data.get("formats") or {}).items()}
+
+        parametros: list[Parameter] = []
+        for raw in data.get("parameters") or []:
+            if not isinstance(raw, dict) or not raw.get("name"):
+                raise ConfigError(f"[{name}] parametro sem 'name'")
+            tipo = str(raw.get("type") or "texto").lower()
+            if tipo not in ("mes", "data", "numero", "texto"):
+                raise ConfigError(
+                    f"[{name}.{raw['name']}] tipo '{tipo}' invalido; "
+                    f"use mes, data, numero ou texto"
+                )
+            parametros.append(
+                Parameter(
+                    name=str(raw["name"]).strip(),
+                    label=str(raw.get("label") or raw["name"]),
+                    type=tipo,
+                    default=raw.get("default"),
+                    optional=bool(raw.get("optional")),
+                )
+            )
         sheets: list[SheetConfig] = []
         for i, raw in enumerate(raw_sheets, start=1):
             if not isinstance(raw, dict):
@@ -183,6 +280,7 @@ class ReportConfig:
             description=data.get("description"),
             sheets=tuple(sheets),
             formats=formats,
+            parameters=tuple(parametros),
             path=path,
         )
 
@@ -317,14 +415,15 @@ def _sheet_sql(sheet: SheetConfig, limite: int) -> str:
     return f"{base} LIMIT {int(limite)}"
 
 
-def fetch_sheet(con, sheet: SheetConfig, max_rows: int):
+def fetch_sheet(con, sheet: SheetConfig, max_rows: int, parametros=None):
     """Executa a aba. -> (colunas, linhas, marcas, total_real).
 
     O corte vai no SQL, nao em Python: uma aba que consultasse dez milhoes de
     linhas para jogar fora nove nao caberia na memoria.
     """
     limite = min(sheet.limit, max_rows) if sheet.limit else max_rows
-    resultado = con.execute(_sheet_sql(sheet, limite))
+    sql = _sheet_sql(sheet, limite)
+    resultado = con.execute(sql, parametros) if parametros else con.execute(sql)
     colunas_todas = [d[0] for d in resultado.description]
     dados = resultado.fetchall()
 
@@ -332,8 +431,9 @@ def fetch_sheet(con, sheet: SheetConfig, max_rows: int):
     if len(dados) == max_rows and (sheet.limit is None or sheet.limit > max_rows):
         # Bateu no teto do formato -- so aqui vale pagar uma contagem para
         # dizer quantas linhas ficaram de fora.
-        total = con.execute(
-            f"SELECT count(*) FROM ({sheet.sql}) AS _aba"
+        contagem = f"SELECT count(*) FROM ({sheet.sql}) AS _aba"
+        total = (
+            con.execute(contagem, parametros) if parametros else con.execute(contagem)
         ).fetchone()[0]
 
     n_hl = len(sheet.highlights)
@@ -356,7 +456,7 @@ def fetch_sheet(con, sheet: SheetConfig, max_rows: int):
 # ------------------------------------------------------------------- escrita
 
 
-def _write_cover(wb, relatorio: ReportConfig, resumo: list[tuple[str, str, int]]) -> None:
+def _write_cover(wb, relatorio: ReportConfig, resumo, parametros=None) -> None:
     """Capa: o que e, quando foi gerado e o que tem em cada aba."""
     from openpyxl.styles import Alignment, Font, PatternFill
 
@@ -380,7 +480,20 @@ def _write_cover(wb, relatorio: ReportConfig, resumo: list[tuple[str, str, int]]
     linha += 1
     ws.cell(linha, 1, "Origem").font = Font(bold=True)
     ws.cell(linha, 2, "datalake (camada gold)")
-    linha += 2
+    linha += 1
+
+    # Sem isto, duas planilhas do mesmo relatorio com filtros diferentes ficam
+    # indistinguiveis depois de salvas.
+    for parametro in relatorio.parameters:
+        valor = (parametros or {}).get(parametro.name)
+        if isinstance(valor, dt.date):
+            mostrado = valor.strftime("%m/%Y" if parametro.type == "mes" else "%d/%m/%Y")
+        else:
+            mostrado = "(todos)" if valor is None else str(valor)
+        ws.cell(linha, 1, parametro.label).font = Font(bold=True)
+        ws.cell(linha, 2, mostrado)
+        linha += 1
+    linha += 1
 
     for coluna, titulo in enumerate(("Aba", "O que mostra", "Linhas"), start=1):
         celula = ws.cell(linha, coluna, titulo)
@@ -456,7 +569,11 @@ def _write_sheet(wb, sheet: SheetConfig, colunas, linhas, marcas, formatos) -> N
 
 
 def build_report(
-    settings: Settings, relatorio: ReportConfig, con, destino_dir: Path
+    settings: Settings,
+    relatorio: ReportConfig,
+    con,
+    destino_dir: Path,
+    valores: dict[str, Any] | None = None,
 ) -> ReportResult:
     """Executa todas as abas e grava um .xlsx."""
     try:
@@ -471,13 +588,14 @@ def build_report(
     total_linhas = 0
 
     try:
+        parametros = relatorio.resolve_parameters(valores)
         wb = Workbook()
         wb.remove(wb.active)
         resumo: list[tuple[str, str, int]] = []
 
         for sheet in relatorio.sheets:
             limite = EXCEL_MAX_ROWS - (1 if sheet.totals else 0)
-            colunas, linhas, marcas, total = fetch_sheet(con, sheet, limite)
+            colunas, linhas, marcas, total = fetch_sheet(con, sheet, limite, parametros)
             if total > len(linhas):
                 aviso = (
                     f"aba '{sheet.name}': {total:,} linhas nao cabem no xlsx; "
@@ -493,7 +611,7 @@ def build_report(
             resumo.append((sheet.name[:31], sheet.description or "", len(linhas)))
             total_linhas += len(linhas)
 
-        _write_cover(wb, relatorio, resumo)
+        _write_cover(wb, relatorio, resumo, parametros)
         destino.parent.mkdir(parents=True, exist_ok=True)
         wb.save(destino)
 
@@ -524,6 +642,7 @@ def build_all(
     settings: Settings,
     apenas: list[str] | None = None,
     destino_dir: Path | None = None,
+    valores: dict[str, Any] | None = None,
 ) -> list[ReportResult]:
     relatorios = load_reports(settings)
     if apenas:
@@ -545,6 +664,6 @@ def build_all(
     try:
         register_silver_views(con, settings)
         register_gold_views(con, settings)
-        return [build_report(settings, r, con, destino) for r in relatorios]
+        return [build_report(settings, r, con, destino, valores) for r in relatorios]
     finally:
         con.close()

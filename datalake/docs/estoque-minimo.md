@@ -110,6 +110,12 @@ momento, então dias anteriores ao início não existem.
 - Somente **rede interna (LAN)** — não é acesso externo; para ver de fora, use
   VPN, não abra a porta na internet.
 
+### Gerador de relatórios
+Em **`https://192.168.78.6:8443/gerar`** dá para gerar qualquer relatório na
+hora, escolhendo o período (e o departamento, no de funilaria), em vez de
+esperar a próxima carga. O arquivo sai em `export/relatorios/gerados/` com data
+e hora no nome. Detalhes em [`relatorios.md`](relatorios.md), seção 3.
+
 ### Login
 O acesso pede **usuário e senha** — a pasta `export` tem margem, faturamento e
 estoque, e sem login qualquer máquina da rede baixa tudo. A tela é a mesma

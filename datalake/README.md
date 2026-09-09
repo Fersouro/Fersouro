@@ -285,10 +285,16 @@ sheets:
 ```
 
 ```bash
-datalake report                      # todos
-datalake report -r margem_pecas      # so um
-datalake report --list               # o que existe
+datalake report                                  # todos
+datalake report -r margem_pecas                  # so um
+datalake report -r margem_pecas --param competencia=2026-08
+datalake report --list                           # o que existe
 ```
+
+Um relatorio pode declarar **parametros** (`competencia`, `departamento`, ...)
+que entram no SQL como parametro nomeado do DuckDB (`$competencia`), nunca
+concatenados. No servidor da empresa, a pagina em `/gerar` mostra esses campos e
+monta a planilha na hora, com o dado que esta no lake naquele momento.
 
 O SQL enxerga as mesmas views da gold (silver `<fonte>__<tabela>` e os modelos
 gold pelo nome), entao nao ha linguagem nova. A primeira aba e sempre a **Capa**:
