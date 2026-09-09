@@ -125,3 +125,43 @@ tables:
     load_mode: full
     quality:
       row_count_min: 1
+
+  # ------------------------------------------------- custeio de veiculos novos
+  # As cinco tabelas da consulta de custeio: proposta, custeio do veiculo,
+  # cadastro das linhas de formula, movimento do veiculo e vendedor.
+
+  # Proposta de venda. O filtro segue o mesmo criterio da nota: 24 meses, pelas
+  # duas datas que interessam (emissao e aprovacao do financeiro), para a
+  # primeira carga nao varrer o historico inteiro.
+  - name: VEI_PROPOSTA
+    load_mode: full
+    filter: >-
+      (DTA_EMISSAO >= ADD_MONTHS(TRUNC(SYSDATE), -24)
+       OR DTA_APROVACAO_FINANCEIRO >= ADD_MONTHS(TRUNC(SYSDATE), -24))
+    quality:
+      row_count_min: 1
+
+  # Custeio: uma linha por veiculo e linha de formula (emplacamento, bonus,
+  # comissao...). E daqui que sai o VAL_PRESENTE que a consulta pivota.
+  - name: VEI_VEICULO_CUSTEIO
+    load_mode: full
+    quality:
+      row_count_min: 1
+
+  # Cadastro das linhas de formula -- da nome ao codigo do custeio.
+  - name: VEI_FORMULA_LINHA
+    load_mode: full
+    quality:
+      row_count_min: 1
+
+  # Movimento do veiculo: liga a proposta a nota fiscal de venda.
+  - name: FAT_MOVIMENTO_VEICULO
+    load_mode: full
+    quality:
+      row_count_min: 1
+
+  # Vendedores -- cadastro pequeno, so o nome interessa aos relatorios.
+  - name: FAT_VENDEDOR
+    load_mode: full
+    quality:
+      row_count_min: 1

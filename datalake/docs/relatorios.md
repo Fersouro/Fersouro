@@ -228,7 +228,15 @@ uma linha por aba com o que ela mostra e quantas linhas tem. É o que responde
 
 | Arquivo | Relatório | Campos |
 |---|---|---|
-| `10_faturamento_funilaria.yml` | Faturamento - Funilaria | Data inicial, Data final, Revenda (1, 2 ou consolidado) |
+| `10_faturamento_funilaria.yml` | Faturamento - Funilaria | Data inicial, Data final, Revenda |
+| `20_veiculos_novos_custeio.yml` | Veiculos-Novos-Custeio | Data inicial, Data final, Revenda |
+| `30_veiculos_usados_custeio.yml` | Veiculos-Usados-Custeio | Data inicial, Data final, Revenda |
+| `40_venda_direta_custeio.yml` | Venda-Direta-Custeio | Data inicial, Data final, Revenda |
+| `50_balcao_pecas_faturamento.yml` | Balcao-Pecas-Faturamento | Data inicial, Data final, Revenda |
+
+Em todos, o período é a **data de aprovação do financeiro** (nos de custeio) ou
+a **data de entrada/saída** (nos de faturamento), e Revenda oferece 1, 2 ou
+consolidado.
 
 É o único no ar. Os demais estão em **`conf/reports/exemplos/`**, que a página
 não lê — ficam como referência de escrita (resumo por período, detalhe linha a
@@ -276,7 +284,32 @@ da tela corresponde a uma pergunta só.
 > então foi mantida, com o bloco marcado no SQL. Para cobrar uma vez só, apague
 > o bloco entre os comentários `>>> bloco repetido do original <<<`.
 
-## 9. Solução de problemas
+## 9. Custeio de veículos: o que mudou das consultas originais
+
+Os três relatórios de custeio saem de dois modelos: `veiculos_custeio` (grão de
+proposta × linha de fórmula) e `veiculos_custeio_nota`, que acrescenta a nota
+fiscal. O **pivô** — uma coluna por linha de fórmula — fica no relatório, não no
+modelo: cada consulta pivota a sua lista, e a lista muda com o tempo.
+
+1. **Sem intervalo fixo**: a data de aprovação virou campo na tela.
+2. **Vendedor por `LEFT JOIN`.** No original era `INNER`: proposta cujo vendedor
+   não estivesse no cadastro sumia da consulta inteira — junto com o dinheiro
+   dela. Com `LEFT`, a linha aparece e só o nome fica vazio.
+3. **A capa da nota é ligada também por empresa e revenda**, não só pelo número.
+   Número de nota se repete entre filiais e séries; ligando só pelo número, a
+   consulta podia pegar a nota de outra loja — e com ela um `STATUS` que não era
+   o daquela venda.
+4. **`FAT_VENDEDOR` ligado por empresa, revenda e vendedor** (a consulta de
+   venda direta já fazia assim; as de novos e usados ligavam só pelo código).
+
+> **Duas colunas que nunca teriam valor.** Na consulta de veículos novos, o
+> `WHERE` filtra `'Bonus Interno'` e `'Bonus Troca'` **sem acento**, enquanto o
+> `PIVOT` procura `'Bônus Interno'` e `'Bônus Troca'` **com acento** — nenhuma
+> linha satisfaz as duas coisas, então essas colunas sairiam sempre vazias.
+> Aqui as duas grafias caem na mesma coluna. Se no ERP só existir uma delas, o
+> resultado é o mesmo; se existirem as duas, agora somam na coluna certa.
+
+## 10. Solução de problemas
 
 | Sintoma | Causa | O que fazer |
 |---|---|---|
@@ -292,7 +325,7 @@ da tela corresponde a uma pergunta só.
 
 ---
 
-## 10. Onde está o código
+## 11. Onde está o código
 
 - `src/datalake/report.py` — leitura do YAML, parâmetros, execução, escrita do xlsx.
 - `sql/gold/60_margem_pecas.sql` — grão de **dia** (era mês), para o filtro de
