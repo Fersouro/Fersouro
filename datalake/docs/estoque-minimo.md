@@ -133,7 +133,14 @@ estoque, e sem login qualquer máquina da rede baixa tudo. A tela é a mesma
 - **Esqueceu a senha?** Rode o mesmo comando com o mesmo nome: ele regrava.
 - Cadastro e troca de senha **valem na hora** — o servidor relê o
   `usuarios.json` quando o arquivo muda, sem reiniciar o serviço.
-- **O login recusa e você tem certeza da senha?** Confira sem navegador:
+- **O login recusa?** Rode o diagnóstico — ele diz quem está atendendo em cada
+  porta, com que argumentos a tarefa sobe o servidor e quem está cadastrado:
+  ```
+  python C:\datalake\diagnostico_pagina.py
+  ```
+  O caso mais comum é a 8443 estar com **outro portal** (o de `C:\Python`), que
+  tem a própria lista de usuários — aí o usuário criado aqui não entra lá.
+- **Confirmada a senha, sem navegador:**
   ```
   python C:\datalake\servir_pagina.py --verificar-senha fernando
   ```

@@ -8,8 +8,8 @@
   Faz:
     1. Baixa a versao atual da branch (com cache-buster) para C:\datalake\app.
     2. Roda a carga uma vez (-Run -KeepGoing) -- ja constroi o venv e gera a pagina.
-    3. Copia ATUALIZAR.bat, servir_pagina.py e instalar_servidor.ps1 para
-       C:\datalake (locais estaveis).
+    3. Copia ATUALIZAR.bat, servir_pagina.py, instalar_servidor.ps1 e
+       diagnostico_pagina.py para C:\datalake (locais estaveis).
 
   O .env (credenciais do Oracle) fica em C:\datalake\.env e e devolvido ao
   projeto a cada atualizacao. Sem isso a senha do banco teria de ser digitada
@@ -106,6 +106,9 @@ if ($srv) { Copy-Item $srv (Join-Path $LakeRoot "servir_pagina.py") -Force; Ok "
 # (-File C:\datalake\instalar_servidor.ps1) falha dizendo que o arquivo nao existe.
 $isv = (Get-ChildItem $App -Recurse -Filter "instalar_servidor.ps1" | Select-Object -First 1).FullName
 if ($isv) { Copy-Item $isv (Join-Path $LakeRoot "instalar_servidor.ps1") -Force; Ok "instalar_servidor.ps1 atualizado" }
+# diagnostico da pagina: responde "quem atende na porta" quando o login recusa
+$dia = (Get-ChildItem $App -Recurse -Filter "diagnostico_pagina.py" | Select-Object -First 1).FullName
+if ($dia) { Copy-Item $dia (Join-Path $LakeRoot "diagnostico_pagina.py") -Force; Ok "diagnostico_pagina.py atualizado" }
 # o proprio instalador, para rodar de novo facil no futuro
 $eu = (Get-ChildItem $App -Recurse -Filter "instalar_app.ps1" | Select-Object -First 1).FullName
 if ($eu) { Copy-Item $eu (Join-Path $LakeRoot "instalar_app.ps1") -Force; Ok "instalar_app.ps1 disponivel em $LakeRoot" }
