@@ -23,44 +23,78 @@
 -- costuma ser peca que mudou de patamar e ficou com a classificacao velha.
 WITH parametros AS (
     SELECT
-        12    AS meses_janela,   -- periodo de apuracao
+        -- ATENCAO: o 12 aparece em DOIS lugares -- aqui (divisor da media) e no
+        -- to_months(12) do recorte da capa, que precisa ser literal para o
+        -- filtro ser empurravel. Mudar so um dos dois da media errada em
+        -- silencio: janela de 24 meses dividida por 12 dobra a demanda.
+        12    AS meses_janela,   -- periodo de apuracao -- casar com to_months()
         0.80  AS corte_a,        -- ate 80% do acumulado = A
         0.95  AS corte_b         -- de 80% a 95% = B; acima = C
 ),
 
--- Mesmas regras de recorte do 60_margem_pecas: nota faturada, fora P50, fora
--- item de industrializacao. A diferenca e que aqui interessa a QUANTIDADE.
+-- POR QUE A CAPA E FILTRADA PRIMEIRO
+--
+-- A primeira versao deste modelo colocava o recorte de 12 meses no WHERE de um
+-- FROM que comecava pela FAT_MOVIMENTO_ITEM (a maior tabela) e trazia a janela
+-- de um CROSS JOIN de parametros. Com a data dependendo de uma coluna vinda do
+-- cross join, o filtro deixa de ser empurravel para a leitura: o motor junta
+-- item com capa inteira e so entao descarta o que esta fora da janela. Resultado
+-- medido no servidor: 625 segundos e a consulta interrompida.
+--
+-- Aqui a capa e recortada sozinha, com literal, antes de qualquer juncao -- e a
+-- juncao grande passa a mirar um conjunto ja pequeno. Mesma resposta, ordem de
+-- grandeza diferente de custo.
+--
+-- Regra que fica: em modelo gold, valor de parametro que entra em filtro de
+-- leitura vai como literal. O CROSS JOIN de parametros so no SELECT final.
+capa AS (
+    SELECT
+        empresa,
+        revenda,
+        numero_nota_fiscal,
+        serie_nota_fiscal,
+        tipo_transacao,
+        contador,
+        date_trunc('month', dta_entrada_saida)              AS competencia
+    FROM ccm__fat_movimento_capa
+    WHERE status = 'F'
+      AND tipo_transacao <> 'P50'
+      -- 12 meses FECHADOS. Literal de proposito: ver o bloco acima.
+      AND dta_entrada_saida >= date_trunc('month', current_date) - to_months(12)
+      AND dta_entrada_saida <  date_trunc('month', current_date)
+),
+
+-- Peca de industrializacao fora, uma vez so, antes da juncao grande.
+pecas AS (
+    SELECT empresa, item_estoque
+    FROM ccm__pec_item_estoque
+    WHERE tipo_industrializacao IS NULL
+),
+
 base AS (
     SELECT
-        fmc.empresa,
-        fmc.revenda,
+        c.empresa,
+        c.revenda,
         fmi.item_estoque,
-        date_trunc('month', fmc.dta_entrada_saida)          AS competencia,
+        c.competencia,
         tt.tipo,
         tt.subtipo_transacao,
         CAST(fmi.quantidade AS DOUBLE)                      AS qtd,
         CAST(fmi.val_total_real_item AS DOUBLE)
           - coalesce(CAST(fmi.val_desconto AS DOUBLE), 0)   AS valor
-    FROM ccm__fat_movimento_item AS fmi
-    JOIN ccm__fat_movimento_capa AS fmc
-      ON  fmc.empresa            = fmi.empresa
-      AND fmc.revenda            = fmi.revenda
-      AND fmc.numero_nota_fiscal = fmi.numero_nota_fiscal
-      AND fmc.serie_nota_fiscal  = fmi.serie_nota_fiscal
-      AND fmc.tipo_transacao     = fmi.tipo_transacao
-      AND fmc.contador           = fmi.contador
+    FROM capa AS c
+    JOIN ccm__fat_movimento_item AS fmi
+      ON  fmi.empresa            = c.empresa
+      AND fmi.revenda            = c.revenda
+      AND fmi.numero_nota_fiscal = c.numero_nota_fiscal
+      AND fmi.serie_nota_fiscal  = c.serie_nota_fiscal
+      AND fmi.tipo_transacao     = c.tipo_transacao
+      AND fmi.contador           = c.contador
     JOIN ccm__fat_tipo_transacao AS tt
-      ON  tt.tipo_transacao = fmc.tipo_transacao
-    JOIN ccm__pec_item_estoque AS pie
-      ON  pie.empresa      = fmi.empresa
-      AND pie.item_estoque = fmi.item_estoque
-    CROSS JOIN parametros AS p
-    WHERE fmc.status = 'F'
-      AND fmc.tipo_transacao <> 'P50'
-      AND pie.tipo_industrializacao IS NULL
-      AND fmc.dta_entrada_saida >= date_trunc('month', current_date)
-                                   - to_months(CAST(p.meses_janela AS INTEGER))
-      AND fmc.dta_entrada_saida <  date_trunc('month', current_date)
+      ON  tt.tipo_transacao = c.tipo_transacao
+    JOIN pecas AS pe
+      ON  pe.empresa      = fmi.empresa
+      AND pe.item_estoque = fmi.item_estoque
 ),
 
 liquido AS (
