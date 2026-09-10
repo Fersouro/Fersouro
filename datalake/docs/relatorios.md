@@ -234,6 +234,7 @@ uma linha por aba com o que ela mostra e quantas linhas tem. É o que responde
 | `40_venda_direta_custeio.yml` | Venda-Direta-Custeio | Data inicial, Data final, Revenda |
 | `50_balcao_pecas_faturamento.yml` | Balcao-Pecas-Faturamento | Data inicial, Data final, Revenda |
 | `60_oficina_faturamento.yml` | Oficina-Faturamento | Data inicial, Data final, Revenda |
+| `70_pecas_curva_ab_demanda.yml` | Pecas - Curva A e B pela demanda | Revenda, Curva (ERP), Meses de cobertura |
 
 Em todos, o período é a **data de aprovação do financeiro** (nos de custeio) ou
 a **data de entrada/saída** (nos de faturamento), e Revenda oferece 1, 2 ou
@@ -345,7 +346,83 @@ por `(empresa, revenda, nro_os)` — mesma conta, escrita de forma direta.
 
 ---
 
-## 12. Onde está o código
+## 12. Peças - Curva A e B pela demanda: como o mínimo é calculado
+
+Responde à pergunta de compra: **das peças que a empresa classifica como A e B,
+quais estão com estoque abaixo do que a demanda pede?**
+
+### A curva vem do ERP, não é inventada
+
+A coluna é `PEC_ITEM_REVENDA.CLASS_ABC` (valores A, B, C e D), exposta pelo
+modelo gold `estoque_pecas`. É a classificação que o pessoal de peças já usa —
+criar uma curva paralela geraria duas verdades sobre a mesma peça.
+
+O modelo `demanda_pecas` calcula uma curva própria (`curva_valor`, `curva_qtd`)
+dos últimos 12 meses. Ela **não substitui** a do ERP: serve para conferir. A aba
+*Curva divergente* mostra onde as duas discordam — normalmente peça que mudou de
+patamar e ficou com a classificação antiga.
+
+### A demanda
+
+Modelo `demanda_pecas`, quatro decisões, todas parametrizadas no topo do SQL:
+
+| Decisão | Por quê |
+|---|---|
+| Janela de **12 meses fechados** | Menos que isso e sazonalidade vira tendência. O mês corrente fica de fora: contá-lo pela metade derrubaria a média todo dia 1º. |
+| Demanda **líquida** (venda − devolução) | Peça vendida e devolvida no mesmo mês não gerou demanda; contar só a venda inflaria o mínimo. |
+| Média divide pela **janela inteira**, não pelos meses com venda | Peça que saiu uma vez em 12 meses tem demanda 0,08/mês — não 1/mês. |
+| Pareto **dentro de cada revenda** | A revenda é quem compra. Junto, esconderia a peça que é A numa loja e C na outra. |
+
+### O corte do Pareto: duas leituras do acumulado
+
+O modelo devolve `acum_valor` (inclui a própria linha — é o número que se **lê**)
+e classifica por `acum_valor_antes` (para na linha anterior).
+
+A diferença não é detalhe. Classificar pelo acumulado inclusivo joga para B
+justamente a peça que **cruza** os 80%. No limite, uma peça que sozinha
+representa 90% do valor não seria A, e a curva sairia **sem nenhum item A** — o
+contrário do que ela existe para mostrar. A regra correta: a peça é A enquanto o
+acumulado *antes* dela ainda não atingiu o corte.
+
+### O mínimo sugerido
+
+```
+minimo_sugerido = ARREDONDA PARA CIMA( demanda_media_mensal × meses_cobertura )
+```
+
+`meses_cobertura` é campo do formulário (padrão **1**), para testar cenários sem
+mexer em SQL.
+
+**O arredondamento para cima é regra de negócio, não detalhe.** Não existe meia
+peça, e arredondar 1,2 para baixo transforma a necessidade real em ruptura
+garantida. Consequência: **toda peça com demanda maior que zero recebe mínimo de
+ao menos 1** — uma peça que vendeu 1 unidade em 12 meses tem demanda 0,083 e sai
+com mínimo 1. Peça sem nenhuma demanda fica com 0, não com 1.
+
+Se a lista sair inchada, o ajuste é apertar a curva (só A) ou rever a
+`CLASS_ABC` no ERP — não mudar o arredondamento.
+
+### As três abas
+
+| Aba | Para quem |
+|---|---|
+| **Curva A e B** | Panorama: toda a curva escolhida, das mais críticas para as demais. |
+| **Comprar agora** | Só ruptura e abaixo do sugerido, na ordem do dinheiro. É a lista para levar ao fornecedor. |
+| **Curva divergente** | Onde a `CLASS_ABC` do ERP não bate com os últimos 12 meses. Sugere revisão de cadastro, não é erro do relatório. |
+
+### Relação com a página de Estoque Mínimo
+
+São coisas diferentes e ambas continuam valendo:
+
+- A **página de estoque mínimo** compara com a lista de mínimos que a equipe
+  digita (`minimos_pecas.csv`). É a decisão humana.
+- Este **relatório** compara com o mínimo que a demanda sugere. É a evidência.
+
+Divergência entre os dois é justamente o que se quer enxergar antes de comprar.
+
+---
+
+## 13. Onde está o código
 
 - `src/datalake/report.py` — leitura do YAML, parâmetros, execução, escrita do xlsx.
 - `sql/gold/60_margem_pecas.sql` — grão de **dia** (era mês), para o filtro de

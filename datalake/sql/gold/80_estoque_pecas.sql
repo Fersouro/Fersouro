@@ -19,6 +19,13 @@ SELECT
     CAST(rev.qtd_pedida   AS DOUBLE)        AS pedido,
     CAST(pie.preco_publico_atual AS DOUBLE) AS preco,
 
+    -- Curva ABC do proprio ERP (A, B, C e D), por peca e revenda. E a
+    -- classificacao que o pessoal de pecas ja usa no dia a dia -- os
+    -- relatorios filtram por ela em vez de inventar uma curva paralela.
+    rev.class_abc,
+    -- Data da ultima saida: separa peca de giro baixo de peca encalhada.
+    rev.dta_saida                           AS ultima_venda,
+
     -- Codigo normalizado (maiusculo, so alfanumerico) para casar com a lista
     -- de minimos sem tropecar em traco, espaco ou ponto.
     regexp_replace(upper(CAST(pie.item_estoque_pub AS VARCHAR)), '[^0-9A-Z]', '', 'g') AS codigo_norm
