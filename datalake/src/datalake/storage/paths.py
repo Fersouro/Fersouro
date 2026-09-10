@@ -33,6 +33,30 @@ def gold_model_dir(root: Path, model: str) -> Path:
     return root / "gold" / model.lower()
 
 
+# Sufixos dos diretorios transitorios criados durante a troca atomica de um
+# dataset: ".staging-<run_id>" enquanto a escrita acontece, ".old" enquanto a
+# versao anterior ainda nao foi descartada.
+#
+# Um Ctrl+C ou uma queda de energia no meio da escrita deixa um deles no disco,
+# com parquet truncado ou com uma copia velha do modelo. Quem varre a gold
+# precisa ignora-los -- registrar um staging quebrado como view derruba TODA
+# consulta ao lake, nao apenas a do modelo que falhou.
+def is_transient_dir(path: Path) -> bool:
+    """Diretorio de trabalho da troca atomica, nao um dataset publicado."""
+    return path.name.endswith(".old") or ".staging-" in path.name
+
+
+def gold_model_dirs(gold_root: Path) -> dict[str, Path]:
+    """Modelos publicados na gold: nome -> diretorio. Sem os transitorios."""
+    if not gold_root.is_dir():
+        return {}
+    return {
+        p.name: p
+        for p in sorted(gold_root.iterdir())
+        if p.is_dir() and not is_transient_dir(p) and any(p.glob("*.parquet"))
+    }
+
+
 def glob_parquet(directory: Path) -> str:
     """Padrao de leitura recursiva usado nas funcoes read_parquet do DuckDB."""
     return str(directory / "**" / "*.parquet")

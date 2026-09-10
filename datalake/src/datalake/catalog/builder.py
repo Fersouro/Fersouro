@@ -36,7 +36,11 @@ def _datasets(root: Path, layer: str) -> dict[str, Path]:
     layer_root = root / layer
     if not layer_root.is_dir():
         return found
+    from ..storage.paths import is_transient_dir
+
     for first in sorted(p for p in layer_root.iterdir() if p.is_dir()):
+        if is_transient_dir(first):  # sobra de escrita interrompida
+            continue
         if any(first.glob("*.parquet")):  # gold/<modelo>/
             found[first.name] = first
             continue

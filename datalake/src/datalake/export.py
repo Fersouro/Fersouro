@@ -44,14 +44,9 @@ class ExportResult:
 
 def gold_models(settings: Settings) -> dict[str, Path]:
     """Modelos materializados na gold: nome -> diretorio."""
-    root = settings.gold
-    if not root.is_dir():
-        return {}
-    return {
-        p.name: p
-        for p in sorted(root.iterdir())
-        if p.is_dir() and any(p.glob("*.parquet"))
-    }
+    from .storage.paths import gold_model_dirs
+
+    return gold_model_dirs(settings.gold)
 
 
 def _fetch(settings: Settings, directory: Path, limit: int | None):

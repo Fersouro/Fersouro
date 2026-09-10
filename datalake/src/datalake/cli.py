@@ -627,12 +627,9 @@ def cmd_query(args, settings: Settings) -> int:
 
 
 def _gold_datasets(settings: Settings) -> dict[str, Path]:
-    root = settings.gold
-    if not root.is_dir():
-        return {}
-    return {
-        p.name: p for p in sorted(root.iterdir()) if p.is_dir() and any(p.glob("*.parquet"))
-    }
+    from .storage.paths import gold_model_dirs
+
+    return gold_model_dirs(settings.gold)
 
 
 # ---------------------------------------------------------------------- parser

@@ -150,8 +150,14 @@ def build_model(
             message="depende de objeto ainda nao carregado",
         )
 
-    except Exception as exc:  # noqa: BLE001
+    except BaseException as exc:  # noqa: BLE001
+        # BaseException, e nao Exception, porque KeyboardInterrupt nao herda de
+        # Exception: com 'except Exception' um Ctrl+C durante a escrita pulava a
+        # limpeza e deixava o staging com parquet truncado no disco. Quem so
+        # relanca (Ctrl+C, SystemExit) sai pelo 'raise' no fim do bloco.
         shutil.rmtree(staging, ignore_errors=True)
+        if not isinstance(exc, Exception):
+            raise
         control.finish_run(
             run_id,
             "gold",
