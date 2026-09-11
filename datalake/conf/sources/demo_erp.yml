@@ -1,0 +1,47 @@
+# Fonte de demonstracao: mesmas tabelas do exemplo Oracle, porem num arquivo
+# DuckDB local gerado por scripts/seed_demo.py. Serve para testar o pipeline
+# inteiro sem depender do banco de producao.
+#
+# Para desativar, apague este arquivo ou renomeie para demo_erp.yml.disabled
+name: demo_erp
+type: duckdb
+
+connection:
+  database: ./data/_demo/erp.duckdb
+
+defaults:
+  schema: main
+  batch_rows: 50000
+
+tables:
+  - name: clientes
+    load_mode: full
+    primary_key: [id_cliente]
+    quality:
+      not_null: [id_cliente, nome, uf]
+      unique: [id_cliente]
+      row_count_min: 1
+      accepted_values:
+        situacao: [A, I]
+
+  - name: pedidos
+    load_mode: incremental
+    primary_key: [id_pedido]
+    watermark_column: dt_atualizacao
+    watermark_type: timestamp
+    lookback: 0.02          # ~30 minutos de janela de seguranca
+    quality:
+      not_null: [id_pedido, id_cliente, dt_pedido, vlr_total]
+      unique: [id_pedido]
+      custom:
+        - name: valor_total_nao_negativo
+          sql: SELECT count(*) FROM {{silver}} WHERE vlr_total < 0
+
+  - name: itens_pedido
+    load_mode: incremental
+    primary_key: [id_pedido, nr_item]
+    watermark_column: dt_atualizacao
+    watermark_type: timestamp
+    quality:
+      not_null: [id_pedido, nr_item, id_produto, quantidade]
+      unique: [[id_pedido, nr_item]]

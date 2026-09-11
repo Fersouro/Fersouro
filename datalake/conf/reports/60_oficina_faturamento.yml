@@ -1,0 +1,68 @@
+# Oficina-Faturamento
+#
+# Pecas e servicos da oficina somados por filial, com a quantidade de
+# passagens (OS distintas). Funilaria (departamento 410) fica de fora -- tem
+# consulta propria.
+name: oficina-faturamento
+title: Oficina-Faturamento
+description: >-
+  Faturamento da oficina no periodo: pecas, desconto, lucro de pecas, servicos,
+  venda total e quantidade de passagens, por filial. Uma OS entra no periodo se
+  QUALQUER uma das datas de fim (externo, garantia, revisao ou encerramento)
+  cair nele -- e o mesmo criterio da consulta original. Fonte: modelo gold
+  'oficina_os_faturamento'.
+
+parameters:
+  - name: data_inicial
+    label: Data inicial
+    type: data
+    default: inicio-do-mes
+  - name: data_final
+    label: Data final
+    type: data
+    default: fim-do-mes
+  - name: revenda
+    label: Revenda
+    type: lista
+    default: ""
+    optional: true
+    options:
+      - value: 1
+        label: Revenda 1
+      - value: 2
+        label: Revenda 2
+      - value: ""
+        label: Consolidado (1 e 2)
+
+formats:
+  cnpj: texto
+  total_pecas: moeda
+  desconto_pecas: moeda
+  lucro_pecas: moeda
+  servicos_total: moeda
+  venda_total: moeda
+  qtde_passagens: inteiro
+
+sheets:
+  - name: Faturamento
+    description: Uma linha por filial; a linha TOTAL soma o que estiver na tela.
+    sql: |
+      SELECT codigo_empresa,
+             cnpj,
+             filial,
+             strftime($data_inicial, '%m/%Y')      AS mes_ano_resultado,
+             sum(total_pecas)                      AS total_pecas,
+             sum(desconto_pecas)                   AS desconto_pecas,
+             sum(lucro_pecas)                      AS lucro_pecas,
+             sum(total_servico)                    AS servicos_total,
+             sum(total_pecas) + sum(total_servico) AS venda_total,
+             count(*)                              AS qtde_passagens
+        FROM oficina_os_faturamento
+       WHERE (dta_fim_externo  BETWEEN $data_inicial AND $data_final
+           OR dta_fim_garantia BETWEEN $data_inicial AND $data_final
+           OR dta_fim_revisao  BETWEEN $data_inicial AND $data_final
+           OR dta_encerramento BETWEEN $data_inicial AND $data_final)
+         AND ($revenda IS NULL OR revenda = $revenda)
+       GROUP BY codigo_empresa, cnpj, filial
+       ORDER BY codigo_empresa
+    totals: [total_pecas, desconto_pecas, lucro_pecas, servicos_total, venda_total, qtde_passagens]

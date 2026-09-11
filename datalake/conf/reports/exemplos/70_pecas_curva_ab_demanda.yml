@@ -1,0 +1,189 @@
+# Pecas - Curva A e B pela demanda media.
+#
+# Responde a pergunta de compra: das pecas que a empresa classifica como A e B,
+# quais estao com estoque abaixo do que a demanda dos ultimos 12 meses pede?
+#
+# A curva vem do ERP (PEC_ITEM_REVENDA.CLASS_ABC) -- e a classificacao que o
+# pessoal de pecas ja usa. O modelo gold 'demanda_pecas' entra com a demanda
+# media mensal, e o minimo sugerido e essa demanda vezes a cobertura,
+# ARREDONDADA SEMPRE PARA CIMA: nao existe meia peca, e arredondar 1,2 para
+# baixo transforma a necessidade real em ruptura garantida.
+name: pecas-curva-ab-demanda
+title: Pecas - Curva A e B pela demanda
+description: >-
+  Pecas de curva A e B com estoque minimo sugerido a partir da demanda media
+  dos ultimos 12 meses fechados (arredondada para cima). Fontes: modelos gold
+  'estoque_pecas' (QTD_CONTABIL e CLASS_ABC do ERP) e 'demanda_pecas'.
+
+parameters:
+  - name: revenda
+    label: Revenda
+    type: lista
+    default: ""
+    optional: true
+    options:
+      - value: 1
+        label: Revenda 1
+      - value: 2
+        label: Revenda 2
+      - value: ""
+        label: Todas (consolidado)
+
+  - name: curva
+    label: Curva (ERP)
+    type: lista
+    default: "AB"
+    optional: true
+    options:
+      - value: "AB"
+        label: A e B
+      - value: "A"
+        label: So A
+      - value: "B"
+        label: So B
+      - value: ""
+        label: Todas as curvas
+
+  # Quantos meses de demanda o minimo cobre. 1 e um comeco conservador em
+  # capital: sobe depois se faltar peca. Fica no formulario para testar
+  # cenarios sem mexer em SQL.
+  - name: cobertura
+    label: Meses de cobertura
+    type: numero
+    default: 1
+    optional: true
+
+formats:
+  demanda_media_mensal: numero
+  minimo_sugerido: numero
+  disponivel: numero
+  falta_comprar: numero
+  cobertura_meses: numero
+  preco: moeda
+  valor_a_comprar: moeda
+  valor_parado: moeda
+  ultima_venda: data
+
+sheets:
+  - name: Curva A e B
+    description: >-
+      Todas as pecas da curva escolhida, das mais criticas para as demais.
+      Situacao RUPTURA e estoque zerado; ABAIXO DO SUGERIDO e o que a demanda
+      pede e nao tem.
+    sql: |
+      WITH p AS (
+          SELECT coalesce($cobertura, 1) AS meses_cobertura
+      ),
+      juntado AS (
+          SELECT
+              est.revenda,
+              est.codigo,
+              est.descricao,
+              est.marca,
+              est.class_abc,
+              est.ultima_venda,
+              est.preco,
+              CAST(est.disponivel AS DOUBLE)                    AS disponivel,
+              coalesce(dem.demanda_media_mensal, 0)             AS demanda_media_mensal,
+              coalesce(dem.qtd_periodo, 0)                      AS qtd_12m,
+              coalesce(dem.meses_com_venda, 0)                  AS meses_com_venda,
+              dem.curva_valor,
+              dem.curva_qtd,
+              -- O arredondamento para cima e a regra do negocio, nao detalhe:
+              -- toda peca com qualquer demanda recebe minimo de ao menos 1.
+              CAST(ceil(coalesce(dem.demanda_media_mensal, 0) * p.meses_cobertura)
+                   AS BIGINT)                                   AS minimo_sugerido
+          FROM estoque_pecas AS est
+          CROSS JOIN p
+          LEFT JOIN demanda_pecas AS dem
+                 ON  dem.revenda      = est.revenda
+                 AND dem.item_estoque = est.item_estoque
+          WHERE ($revenda IS NULL OR est.revenda = $revenda)
+            AND ($curva IS NULL OR $curva = ''
+                 OR list_contains(string_split($curva, ''), est.class_abc))
+      )
+      SELECT
+          revenda, codigo, descricao, marca,
+          class_abc, curva_valor, curva_qtd,
+          qtd_12m, meses_com_venda, demanda_media_mensal,
+          minimo_sugerido, disponivel,
+          greatest(minimo_sugerido - disponivel, 0)             AS falta_comprar,
+          greatest(minimo_sugerido - disponivel, 0)
+            * coalesce(preco, 0)                                AS valor_a_comprar,
+          -- Quantos meses o saldo de hoje aguenta. NULL quando nao ha demanda.
+          round(disponivel / nullif(demanda_media_mensal, 0), 1) AS cobertura_meses,
+          ultima_venda,
+          CASE WHEN disponivel <= 0                THEN 'RUPTURA'
+               WHEN disponivel < minimo_sugerido   THEN 'ABAIXO DO SUGERIDO'
+               ELSE 'OK' END                                    AS situacao
+        FROM juntado
+       ORDER BY CASE WHEN disponivel <= 0              THEN 1
+                     WHEN disponivel < minimo_sugerido THEN 2
+                     ELSE 3 END,
+                greatest(minimo_sugerido - disponivel, 0) * coalesce(preco, 0) DESC,
+                codigo
+    totals: [falta_comprar, valor_a_comprar]
+
+  - name: Comprar agora
+    description: >-
+      So o que esta em ruptura ou abaixo do sugerido, na ordem do dinheiro:
+      maior valor de reposicao primeiro. E a lista para levar ao fornecedor.
+    sql: |
+      WITH p AS (
+          SELECT coalesce($cobertura, 1) AS meses_cobertura
+      )
+      SELECT
+          est.revenda, est.codigo, est.descricao, est.marca, est.class_abc,
+          round(coalesce(dem.demanda_media_mensal, 0), 4)       AS demanda_media_mensal,
+          CAST(ceil(coalesce(dem.demanda_media_mensal, 0) * p.meses_cobertura)
+               AS BIGINT)                                       AS minimo_sugerido,
+          CAST(est.disponivel AS DOUBLE)                        AS disponivel,
+          greatest(CAST(ceil(coalesce(dem.demanda_media_mensal, 0) * p.meses_cobertura)
+                        AS BIGINT) - est.disponivel, 0)         AS falta_comprar,
+          est.preco,
+          greatest(CAST(ceil(coalesce(dem.demanda_media_mensal, 0) * p.meses_cobertura)
+                        AS BIGINT) - est.disponivel, 0)
+            * coalesce(est.preco, 0)                            AS valor_a_comprar,
+          est.ultima_venda,
+          CASE WHEN est.disponivel <= 0 THEN 'RUPTURA'
+               ELSE 'ABAIXO DO SUGERIDO' END                    AS situacao
+        FROM estoque_pecas AS est
+        CROSS JOIN p
+        LEFT JOIN demanda_pecas AS dem
+               ON  dem.revenda      = est.revenda
+               AND dem.item_estoque = est.item_estoque
+       WHERE ($revenda IS NULL OR est.revenda = $revenda)
+         AND ($curva IS NULL OR $curva = ''
+              OR list_contains(string_split($curva, ''), est.class_abc))
+         AND est.disponivel < CAST(ceil(coalesce(dem.demanda_media_mensal, 0)
+                                        * p.meses_cobertura) AS BIGINT)
+       ORDER BY CASE WHEN est.disponivel <= 0 THEN 1 ELSE 2 END,
+                valor_a_comprar DESC,
+                est.codigo
+    totals: [falta_comprar, valor_a_comprar]
+
+  - name: Curva divergente
+    description: >-
+      Pecas em que a curva do ERP nao bate com a dos ultimos 12 meses. Costuma
+      ser peca que mudou de patamar e ficou com a classificacao antiga -- vale
+      revisar o cadastro. Nao e erro do relatorio.
+    sql: |
+      SELECT
+          est.revenda, est.codigo, est.descricao, est.marca,
+          est.class_abc                                         AS curva_erp,
+          dem.curva_valor                                       AS curva_valor_12m,
+          dem.curva_qtd                                         AS curva_qtd_12m,
+          round(dem.qtd_periodo, 2)                             AS qtd_12m,
+          round(dem.valor_periodo, 2)                           AS valor_12m,
+          CAST(est.disponivel AS DOUBLE)                        AS disponivel,
+          est.disponivel * coalesce(est.preco, 0)               AS valor_parado,
+          est.ultima_venda
+        FROM estoque_pecas AS est
+        JOIN demanda_pecas AS dem
+             ON  dem.revenda      = est.revenda
+             AND dem.item_estoque = est.item_estoque
+       WHERE ($revenda IS NULL OR est.revenda = $revenda)
+         AND est.class_abc IS NOT NULL
+         AND est.class_abc <> dem.curva_valor
+       ORDER BY dem.valor_periodo DESC
+    totals: [valor_parado]
