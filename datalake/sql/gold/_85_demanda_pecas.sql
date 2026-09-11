@@ -1,3 +1,23 @@
+-- =============================================================================
+-- DESARMADO -- NAO ENTRA NA CARGA ENQUANTO O NOME COMECAR COM "_"
+--
+-- Motivo: em 10 e 11/09/2026 este modelo consumiu cargas inteiras. Rodou 3
+-- horas sem terminar, e cada execucao interrompida deixava um diretorio
+-- gold/demanda_pecas.staging-* com parquet truncado -- que ate o commit
+-- 216cdc5 derrubava QUALQUER consulta ao lake. As cargas 6x/dia passaram a
+-- ser engolidas por ele.
+--
+-- Causa ainda NAO confirmada. A hipotese e a juncao de 6 colunas entre
+-- fat_movimento_item e fat_movimento_capa cair em nested loop por
+-- incompatibilidade de tipo nas chaves. Falta rodar o DESCRIBE nas duas.
+--
+-- IMPORTANTE: o 60_margem_pecas usa a MESMA juncao de 6 colunas e nunca foi
+-- exercitado com a fat_movimento_item cheia (ela falhava com ORA-00942 ate
+-- 31/08). Se a hipotese se confirmar, ele tem o mesmo problema.
+--
+-- PARA REATIVAR: confirmar a causa, corrigir, medir o tempo com dado real, e
+-- so entao renomear para 85_demanda_pecas.sql.
+-- =============================================================================
 -- Demanda de pecas por revenda: quanto cada peca realmente sai por mes.
 --
 -- E a base para dimensionar estoque minimo. O ERP diz o que ha em estoque
