@@ -1,0 +1,47 @@
+# Funilaria - Notas do periodo
+#
+# O detalhe que sustenta o total do relatorio de faturamento: uma linha por
+# nota. Fica separado de proposito -- uma consulta por relatorio.
+name: funilaria-notas
+title: Funilaria - Notas do periodo
+description: >-
+  Uma linha por nota de servico (series 03 e 08) no periodo escolhido, com o
+  total da nota, o liquido e a diferenca entre os dois.
+
+parameters:
+  - name: data_inicial
+    label: Data inicial
+    type: data
+    default: inicio-do-mes
+  - name: data_final
+    label: Data final
+    type: data
+    default: fim-do-mes
+  - name: departamento
+    label: Departamento
+    type: numero
+    default: 410
+    optional: true
+
+formats:
+  numero_nota_fiscal: texto
+  total_nota: moeda
+  valor_liquido: moeda
+  deducoes: moeda
+
+sheets:
+  - name: Notas
+    description: Notas do periodo, da mais recente para a mais antiga.
+    sql: |
+      SELECT data, filial, departamento, numero_nota_fiscal, serie,
+             tipo_transacao, total_nota, valor_liquido,
+             total_nota - valor_liquido AS deducoes
+        FROM faturamento_notas
+       WHERE data BETWEEN $data_inicial AND $data_final
+         AND serie IN ('03','08')
+         AND ($departamento IS NULL OR departamento = $departamento)
+       ORDER BY data DESC, numero_nota_fiscal
+    totals: [total_nota, valor_liquido, deducoes]
+    highlights:
+      - when: valor_liquido <= 0
+        style: amarelo

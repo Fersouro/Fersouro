@@ -1,0 +1,104 @@
+# Veiculos-Novos-Custeio
+#
+# Traducao da consulta de custeio que a equipe roda hoje. O que era intervalo
+# fixo no SQL virou campo de data na tela; a lista de linhas de formula e o
+# pivo continuam iguais aos do original.
+name: veiculos-novos-custeio
+title: Veiculos-Novos-Custeio
+description: >-
+  Custeio dos veiculos novos faturados (serie 03, transacao V21) no periodo de
+  aprovacao do financeiro, com uma coluna por linha de formula. Fonte: modelo
+  gold 'veiculos_custeio_nota'.
+
+parameters:
+  - name: data_inicial
+    label: Data inicial
+    type: data
+    default: inicio-do-mes
+  - name: data_final
+    label: Data final
+    type: data
+    default: fim-do-mes
+  - name: revenda
+    label: Revenda
+    type: lista
+    default: ""
+    optional: true
+    options:
+      - value: 1
+        label: Revenda 1
+      - value: 2
+        label: Revenda 2
+      - value: ""
+        label: Consolidado (1 e 2)
+
+formats:
+  cnpj: texto
+  proposta: texto
+  numero_nota_fiscal: texto
+  "Emplacamento": moeda
+  "Valor_Compra_Novos": moeda
+  "Cortesias": moeda
+  "Comissao": moeda
+  "Ipva": moeda
+  "CT": moeda
+  "Tanque_Cheio": moeda
+  "Taxa_de_Emplacamento": moeda
+  "Bonus_Adicionais": moeda
+  "Bonus_Varejo": moeda
+  "Bonus_Interno": moeda
+  "Bonus_Troca": moeda
+  "Bonus_Imposto": moeda
+  "F_I": moeda
+  "BVW": moeda
+  "BM": moeda
+  "Duplicata_D": moeda
+  "PIV_PIVE": moeda
+  "Lancamentos_Internos": moeda
+  "OS_Interna": moeda
+  "Despesa_Operacional": moeda
+  "Multa": moeda
+  "Comissao_BVW": moeda
+  val_total: moeda
+
+sheets:
+  - name: Custeio
+    description: Uma linha por proposta; uma coluna por linha de formula.
+    sql: |
+      SELECT codigo_empresa, cnpj, filial, proposta, veiculo, dta_emissao,
+             dta_aprovacao, tipo_veiculo, revenda, vendedor, vendedor_nome,
+             numero_nota_fiscal, status, val_total,
+             max(val_presente) FILTER (WHERE linha_formula IN ('Emplacamento')) AS "Emplacamento",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Valor de Compra')) AS "Valor_Compra_Novos",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Cortesias')) AS "Cortesias",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Comissao')) AS "Comissao",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Ipva')) AS "Ipva",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Ct')) AS "CT",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Tanque Cheio')) AS "Tanque_Cheio",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Taxa de Emplacamento')) AS "Taxa_de_Emplacamento",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Bônus Adicionais', 'Bonus Adicionais')) AS "Bonus_Adicionais",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Bônus Varejo', 'Bonus Varejo')) AS "Bonus_Varejo",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Bônus Interno', 'Bonus Interno')) AS "Bonus_Interno",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Bônus Troca', 'Bonus Troca')) AS "Bonus_Troca",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Bônus Imposto', 'Bonus Imposto')) AS "Bonus_Imposto",
+             max(val_presente) FILTER (WHERE linha_formula IN ('F&I')) AS "F_I",
+             max(val_presente) FILTER (WHERE linha_formula IN ('BVW')) AS "BVW",
+             max(val_presente) FILTER (WHERE linha_formula IN ('BM')) AS "BM",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Duplicata D', 'Duplicata_D')) AS "Duplicata_D",
+             max(val_presente) FILTER (WHERE linha_formula IN ('PIV/PIVE')) AS "PIV_PIVE",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Lançamentos Internos', 'Lancamentos Internos')) AS "Lancamentos_Internos",
+             max(val_presente) FILTER (WHERE linha_formula IN ('O.S Interna')) AS "OS_Interna",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Despesa Operacional')) AS "Despesa_Operacional",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Multa')) AS "Multa",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Comissao BVW')) AS "Comissao_BVW"
+        FROM veiculos_custeio_nota
+       WHERE dta_aprovacao BETWEEN $data_inicial AND $data_final
+         AND ($revenda IS NULL OR revenda = $revenda)
+         AND tipo_transacao = 'V21'
+         AND status = 'F'
+         AND linha_formula IN ('BM', 'BVW', 'Bonus Adicionais', 'Bonus Imposto', 'Bonus Interno', 'Bonus Troca', 'Bonus Varejo', 'Bônus Adicionais', 'Bônus Imposto', 'Bônus Interno', 'Bônus Troca', 'Bônus Varejo', 'Comissao', 'Comissao BVW', 'Cortesias', 'Ct', 'Despesa Operacional', 'Duplicata D', 'Duplicata_D', 'Emplacamento', 'F&I', 'Ipva', 'Lancamentos Internos', 'Lançamentos Internos', 'Multa', 'O.S Interna', 'PIV/PIVE', 'Tanque Cheio', 'Taxa de Emplacamento', 'Valor de Compra')
+       GROUP BY codigo_empresa, cnpj, filial, proposta, veiculo, dta_emissao,
+             dta_aprovacao, tipo_veiculo, revenda, vendedor, vendedor_nome,
+             numero_nota_fiscal, status, val_total
+       ORDER BY dta_aprovacao, proposta
+    totals: [val_total]

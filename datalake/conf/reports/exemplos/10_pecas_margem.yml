@@ -1,0 +1,53 @@
+# Pecas - Margem no periodo.
+# Consulta Gerencial > Pecas do Apollo, com o periodo escolhido na tela.
+name: pecas-margem
+title: Pecas - Margem
+description: >-
+  Venda, custo, lucro e desconto por filial e departamento no periodo, ja
+  liquidos de devolucao. Fonte: modelo gold 'margem_pecas'. As porcentagens sao
+  calculadas sobre a soma do periodo, nao pela media dos dias.
+
+parameters:
+  - name: data_inicial
+    label: Data inicial
+    type: data
+    default: inicio-do-mes
+  - name: data_final
+    label: Data final
+    type: data
+    default: fim-do-mes
+  - name: departamento
+    label: Departamento
+    type: numero
+    optional: true          # em branco = todos
+
+formats:
+  venda_total: moeda
+  custo: moeda
+  lucro: moeda
+  valor_desconto: moeda
+  devolucao_total: moeda
+  lucro_porcentagem: percentual
+  desconto_porcentagem: percentual
+
+sheets:
+  - name: Margem
+    description: Uma linha por filial e departamento, do maior lucro para o menor.
+    sql: |
+      SELECT filial,
+             departamento,
+             sum(venda_total)                                              AS venda_total,
+             sum(custo)                                                    AS custo,
+             sum(lucro)                                                    AS lucro,
+             round(sum(lucro) / nullif(sum(venda_total), 0) * 100, 2)      AS lucro_porcentagem,
+             sum(valor_desconto)                                           AS valor_desconto,
+             sum(devolucao_total)                                          AS devolucao_total
+        FROM margem_pecas
+       WHERE data BETWEEN $data_inicial AND $data_final
+         AND ($departamento IS NULL OR departamento = $departamento)
+       GROUP BY filial, departamento
+       ORDER BY lucro DESC
+    totals: [venda_total, custo, lucro, valor_desconto, devolucao_total]
+    highlights:
+      - when: lucro < 0
+        style: vermelho

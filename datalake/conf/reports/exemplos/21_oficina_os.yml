@@ -1,0 +1,39 @@
+# Oficina - Uma linha por OS encerrada no periodo.
+name: oficina-os
+title: Oficina - OS do periodo
+description: >-
+  Uma linha por ordem de servico encerrada no periodo, com loja, cliente, fonte
+  pagadora e quantos dias ficou aberta.
+
+parameters:
+  - name: data_inicial
+    label: Data inicial
+    type: data
+    default: inicio-do-mes
+  - name: data_final
+    label: Data final
+    type: data
+    default: fim-do-mes
+  - name: departamento
+    label: Departamento
+    type: numero
+    optional: true
+
+formats:
+  nro_os: texto
+  dias_em_aberto: inteiro
+
+sheets:
+  - name: OS
+    description: Da mais recente para a mais antiga.
+    sql: |
+      SELECT loja, departamento, nro_os, emissao, encerramento, dias_em_aberto,
+             cliente, fonte_pagadora
+        FROM ordens_servico
+       WHERE encerramento BETWEEN $data_inicial AND $data_final
+         AND ($departamento IS NULL OR departamento = $departamento)
+       ORDER BY encerramento DESC, nro_os
+    highlights:
+      - when: dias_em_aberto > 30
+        style: vermelho
+        scope: dias_em_aberto

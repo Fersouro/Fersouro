@@ -1,0 +1,40 @@
+# Pecas - Estoque como estava numa data.
+#
+# O ERP so guarda o saldo do momento -- nao da para perguntar a ele como estava
+# na semana passada. Quem guarda isso e o snapshot diario que a pagina de
+# Estoque Minimo grava desde que entrou no ar; e dele que este relatorio le.
+name: pecas-estoque-data
+title: Pecas - Estoque na data
+description: >-
+  Disponivel por peca e revenda como estava na data escolhida, com o minimo e o
+  que faltava para atingi-lo. Fonte: snapshots diarios do Estoque Minimo -- o
+  historico vale a partir do primeiro dia registrado.
+
+parameters:
+  - name: data
+    label: Data
+    type: data
+    default: hoje
+  - name: revenda
+    label: Revenda
+    type: numero
+    optional: true
+
+formats:
+  disponivel: numero
+  minimo: numero
+  faltam: numero
+
+sheets:
+  - name: Estoque
+    description: Uma linha por peca e revenda; em vermelho o que estava abaixo do minimo.
+    sql: |
+      SELECT revenda, codigo, descricao, disponivel, minimo,
+             greatest(minimo - disponivel, 0) AS faltam
+        FROM historico_estoque
+       WHERE data = $data
+         AND ($revenda IS NULL OR revenda = $revenda)
+       ORDER BY (disponivel < minimo) DESC, revenda, codigo
+    highlights:
+      - when: disponivel < minimo
+        style: vermelho
