@@ -113,8 +113,12 @@ def build_model(
             raise ValueError(f"{path.name} esta vazio")
         staging.mkdir(parents=True, exist_ok=True)
         destination = staging / "data.parquet"
+        # As quebras de linha em volta do modelo nao sao estetica: sem a de
+        # baixo, um modelo cujo texto TERMINA em comentario de linha (-- ...)
+        # engole o parentese de fechamento, e o erro que sai -- "syntax error at
+        # end of input" -- nao aponta para o comentario nem para o arquivo.
         con.execute(
-            f"COPY ({sql}) TO {quote_literal(str(destination))} "
+            f"COPY (\n{sql}\n) TO {quote_literal(str(destination))} "
             f"(FORMAT PARQUET, COMPRESSION {settings.compression})"
         )
         rows = con.execute(

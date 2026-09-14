@@ -475,7 +475,10 @@ def _sheet_sql(sheet: SheetConfig, limite: int) -> str:
     qualquer expressao SQL no 'when' sem inventar um mini-interpretador.
     """
     if not sheet.highlights:
-        base = f"SELECT * FROM ({sheet.sql}) AS _aba"
+        # Quebra de linha antes do fechamento: SQL de aba que termina em
+        # comentario de linha (-- ...) engoliria o parentese. Mesmo caso do
+        # embrulho da camada gold.
+        base = f"SELECT * FROM (\n{sheet.sql}\n) AS _aba"
     else:
         extras = ", ".join(
             f"CAST(({h.when}) AS BOOLEAN) AS {quote(f'__hl_{i}')}"

@@ -560,3 +560,36 @@ sheets:
     capa = [c.value for linha in load_workbook(resultado.path)["Capa"].iter_rows()
             for c in linha]
     assert "Todos os clientes" in capa
+
+
+# --------------------------------------------- SQL terminado em comentario
+
+RELATORIO_COMENTARIO_NO_FIM = """
+name: comentario-no-fim
+title: SQL que termina em comentario
+sheets:
+  - name: Resumo
+    sql: |
+      SELECT nome, sum(vlr_total) AS vlr_total
+        FROM pedidos_cliente
+       GROUP BY nome
+       ORDER BY nome   -- o comentario fica na ULTIMA linha, de proposito
+"""
+
+
+def test_sql_que_termina_em_comentario_nao_quebra(project, lake_com_gold, tmp_path):
+    """O embrulho da aba precisa de quebra de linha antes do parentese.
+
+    O SQL da aba entra dentro de 'SELECT * FROM (...) AS _aba'. Se o texto
+    terminar num comentario de linha e o parentese vier logo em seguida, o
+    comentario engole o fechamento. O erro que sai -- "syntax error at end of
+    input" -- nao cita comentario nem arquivo, e custa caro de achar: foi
+    exatamente o que derrubou o modelo gold veiculos_custeio_nota.
+    """
+    _escrever_relatorio(project, RELATORIO_COMENTARIO_NO_FIM, "comentario.yml")
+    resultados = build_all(lake_com_gold, destino_dir=tmp_path / "saida")
+
+    por_nome = {r.report: r for r in resultados}
+    assert por_nome["comentario-no-fim"].status == "success", (
+        por_nome["comentario-no-fim"].message
+    )

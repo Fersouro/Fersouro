@@ -29,4 +29,5 @@ JOIN ccm__fat_movimento_capa AS fmc
 
 WHERE fmv.serie_nota_fiscal = '03'
   AND fmv.tipo_transacao IN ('V21', 'U21')
-  AND coalesce(fmc.status, '') <> 'C'          -- nota cancelada nunca entra
+  -- Nota cancelada nunca entra.
+  AND coalesce(fmc.status, '') <> 'C'
