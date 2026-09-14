@@ -111,6 +111,32 @@ def _consultar(con, minimos):
     return dados
 
 
+# Acima disso a pagina estampa aviso de dado velho. Seis cargas por dia, a
+# maior folga entre elas e de 13h (18h37 -> 7h): 14 horas sem atualizar
+# significa que uma carga falhou, nao que o dia foi tranquilo.
+HORAS_PARA_AVISAR = 14
+
+
+def _data_do_dado(lake_dir):
+    """Quando o saldo foi realmente lido do ERP -- nao quando a pagina rodou.
+
+    E a data de modificacao do parquet da PEC_ITEM_REVENDA na silver, que so
+    muda quando uma carga alcanca o Oracle. Sem isso, uma carga degradada (banco
+    fora do ar, reprocessando o lake em disco) geraria uma pagina com carimbo de
+    hoje sobre dado de dias atras -- que e pior do que a pagina congelada, por
+    parecer atual.
+
+    Devolve (datetime, idade_em_horas) ou (None, None) se nao achar o parquet.
+    """
+    padrao = os.path.join(lake_dir, "silver", "ccm", "pec_item_revenda", "*.parquet")
+    arquivos = glob.glob(padrao)
+    if not arquivos:
+        return None, None
+    quando = datetime.datetime.fromtimestamp(max(os.path.getmtime(a) for a in arquivos))
+    idade = (datetime.datetime.now() - quando).total_seconds() / 3600.0
+    return quando, idade
+
+
 def _gravar_snapshot(hist_dir, dia_iso, dados):
     """Grava a foto do dia num parquet (sobrescreve o do dia)."""
     os.makedirs(hist_dir, exist_ok=True)
@@ -175,24 +201,34 @@ def main():
     if dados is None:
         return 1
 
-    hoje = datetime.date.today().isoformat()
+    # O snapshot leva a data do DADO, nao a de hoje: numa carga degradada,
+    # carimbar o dia atual sobre saldo antigo falsificaria o historico.
+    quando_dado, idade_h = _data_do_dado(lake_dir)
+    dia = (quando_dado.date() if quando_dado else datetime.date.today()).isoformat()
+
     hist_dir = os.path.join(lake_dir, "historico_estoque")
-    _gravar_snapshot(hist_dir, hoje, dados)
+    _gravar_snapshot(hist_dir, dia, dados)
     historico = _ler_historico(hist_dir)
-    if hoje not in historico:            # garante o dia atual mesmo sem parquet
-        historico = {hoje: [dict(revenda=d["revenda"], codigo=d["codigo"],
-                                 descricao=d["descricao"], disponivel=d["disponivel"],
-                                 minimo=d["minimo"], comprar=d["comprar"]) for d in dados],
+    if dia not in historico:             # garante o dia do dado mesmo sem parquet
+        historico = {dia: [dict(revenda=d["revenda"], codigo=d["codigo"],
+                                descricao=d["descricao"], disponivel=d["disponivel"],
+                                minimo=d["minimo"], comprar=d["comprar"]) for d in dados],
                      **historico}
 
     gerado = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    if quando_dado:
+        dado_txt = quando_dado.strftime("%d/%m/%Y %H:%M")
+        print("Dado do ERP de:", dado_txt, "| idade: %.1fh" % idade_h)
+    else:
+        dado_txt = "desconhecida"
+        print("NAO consegui datar o dado (parquet da silver nao encontrado).")
     comprar_n = sum(1 for d in dados if d["comprar"])
     print("Linhas hoje:", len(dados), "| para comprar:", comprar_n,
           "| dias no historico:", len(historico))
 
     export_dir = os.path.join(lake_dir, "export")
     os.makedirs(export_dir, exist_ok=True)
-    _escrever_html(export_dir, historico, gerado)
+    _escrever_html(export_dir, historico, gerado, dado_txt, idade_h)
     _escrever_xlsx(export_dir, dados)
     return 0
 
@@ -202,7 +238,24 @@ def _fmt_data(iso):
     return "%s/%s/%s" % (d, m, a)
 
 
-def _escrever_html(export_dir, historico, gerado):
+def _montar_aviso(dado_txt, idade_h):
+    """Faixa vermelha quando o dado esta velho. Vazio quando esta em dia."""
+    if idade_h is None:
+        return ('<div class="aviso">Nao foi possivel datar o dado do ERP. '
+                'Trate os numeros abaixo como nao confirmados.</div>')
+    if idade_h < HORAS_PARA_AVISAR:
+        return ""
+    if idade_h < 48:
+        quanto = "ha %d horas" % round(idade_h)
+    else:
+        quanto = "ha %d dias" % round(idade_h / 24)
+    return ('<div class="aviso">ATENCAO: estes numeros sao de %s '
+            '&mdash; sem atualizar %s. A carga nao esta alcancando o ERP. '
+            'Confirme o saldo no sistema antes de comprar.</div>'
+            % (html.escape(dado_txt), quanto))
+
+
+def _escrever_html(export_dir, historico, gerado, dado_txt="desconhecida", idade_h=None):
     datas = list(historico.keys())          # ja vem mais novo primeiro
     revendas = sorted({r["revenda"] for linhas in historico.values() for r in linhas})
     data_opts = "".join("<option value='%s'>%s</option>" % (d, _fmt_data(d)) for d in datas)
@@ -211,7 +264,9 @@ def _escrever_html(export_dir, historico, gerado):
             .replace("__HIST__", json.dumps(historico, ensure_ascii=False))
             .replace("__DATA_OPTS__", data_opts)
             .replace("__REV_OPTS__", rev_opts)
-            .replace("__GERADO__", html.escape(gerado)))
+            .replace("__GERADO__", html.escape(gerado))
+            .replace("__DADO__", html.escape(dado_txt))
+            .replace("__AVISO__", _montar_aviso(dado_txt, idade_h)))
     caminho = os.path.join(export_dir, "estoque_minimo.html")
     with open(caminho, "w", encoding="utf-8") as f:
         f.write(page)
@@ -287,13 +342,15 @@ _TEMPLATE = r"""<!doctype html>
   .rodape { padding:10px 22px 30px; color:#888; font-size:12px; }
   button { padding:8px 14px; border:0; background:var(--azul); color:#fff; border-radius:6px; font-size:14px; cursor:pointer; }
   .vazio { padding:30px; text-align:center; color:#888; }
+  .aviso { background:var(--vermelho); color:#fff; padding:12px 22px; font-size:14px; font-weight:600; }
 </style>
 </head>
 <body>
 <header>
   <h1>Estoque Minimo de Pecas</h1>
-  <div class="sub">Grupo Terrasul &middot; disponivel do datalake &middot; pagina gerada em __GERADO__</div>
+  <div class="sub">Grupo Terrasul &middot; disponivel do ERP em <b>__DADO__</b> &middot; pagina montada em __GERADO__</div>
 </header>
+__AVISO__
 
 <div class="barra">
   <label>Data

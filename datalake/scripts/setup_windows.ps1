@@ -52,6 +52,11 @@ param(
     [switch]$Force
 )
 
+# Vira $true quando a rota ao banco cai e a carga segue em modo offline.
+# Muda a mensagem final e o codigo de saida, para uma execucao degradada nao
+# se passar por bem-sucedida na Tarefa Agendada.
+$script:Degradado = $false
+
 $ErrorActionPreference = "Stop"
 $saida = Join-Path (Get-Location) "saida-datalake.txt"
 try { Start-Transcript -Path $saida -Force | Out-Null } catch { }
@@ -166,16 +171,33 @@ if ($Estoque -or $Gold) {
     Write-Host "    (ate 20s; e aqui que se descobre se esta maquina alcanca o banco)"
     $rota = Test-NetConnection -ComputerName $OracleHost -Port $Port -InformationLevel Quiet -WarningAction SilentlyContinue
     if (-not $rota) {
-        Parar @"
-Sem rota TCP ate $OracleHost`:$Port a partir desta maquina.
-Isso acontece antes de qualquer validacao de usuario e senha.
-  - a VPN esta conectada?
-  - esta maquina fica na mesma rede do banco?
-  - o firewall libera a porta $Port?
-Enquanto isso nao passar, nenhuma configuracao adianta.
-"@
+        # Antes isto abortava a execucao inteira. O efeito colateral era pior que
+        # o problema: com o banco fora do ar as seis cargas diarias morriam aqui,
+        # a pagina parava de ser regerada e ficava congelada dias a fio sem nada
+        # na tela dizendo isso. Foi o que aconteceu entre 10 e 14/09/2026.
+        #
+        # Agora a execucao cai para o modo offline: reprocessa o lake que ja esta
+        # em disco e regenera a pagina. Os numeros nao ficam mais novos -- mas a
+        # pagina volta a sair, e o gerar_estoque.py estampa nela a data real do
+        # dado e uma faixa vermelha de "sem atualizar ha X". Pagina honestamente
+        # velha vale mais que pagina ausente.
+        Write-Host ""
+        Write-Host "  AVISO: sem rota TCP ate $OracleHost`:$Port a partir desta maquina." -ForegroundColor Yellow
+        Write-Host "  Isso acontece antes de qualquer validacao de usuario e senha." -ForegroundColor Yellow
+        Write-Host "    - a VPN esta conectada?" -ForegroundColor Yellow
+        Write-Host "    - esta maquina fica na mesma rede do banco?" -ForegroundColor Yellow
+        Write-Host "    - o firewall libera a porta $Port?" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "  Seguindo em MODO OFFLINE: os dados NAO serao atualizados." -ForegroundColor Yellow
+        Write-Host "  A pagina sera regerada com o que ja esta no lake, marcada" -ForegroundColor Yellow
+        Write-Host "  com a data real do dado e com aviso de desatualizacao." -ForegroundColor Yellow
+        Write-Host ""
+        $script:Degradado = $true
+        $Gold = $true
+        $Run  = $false
+    } else {
+        Ok "porta $Port respondendo -- esta maquina alcanca o banco"
     }
-    Ok "porta $Port respondendo -- esta maquina alcanca o banco"
 }
 
 # ------------------------------------------------------------------- 4. venv
@@ -226,8 +248,13 @@ Ok "dados do lake em $lakeRootFinal"
 
 # -Estoque nao usa Oracle: nao pede senha nem mexe no .env. So precisa saber
 # onde o lake esta (o $lakeRootFinal acima), e o script recebe esse caminho.
-if ($Estoque) {
-    Ok "modo -Estoque: pulando credenciais (le so o lake em disco)"
+# -Gold entra junto com -Estoque: nenhum dos dois toca no Oracle, e pedir senha
+# aqui seria pior que inutil. O Read-Host abaixo trava esperando digitacao, e uma
+# Tarefa Agendada nao tem quem digite -- a carga ficaria pendurada indefinidamente
+# em vez de falhar. Vale principalmente para a queda automatica para modo offline,
+# que e acionada justamente pela automacao.
+if ($Estoque -or $Gold) {
+    Ok "modo offline: pulando credenciais (le so o lake em disco)"
 } else {
 $prefixo = $SourceName.ToUpper()
 $jaTem = (Test-Path $envPath) -and (Select-String -Path $envPath -Pattern "^ORACLE_${prefixo}_DSN=" -Quiet)
@@ -324,8 +351,32 @@ if ($Gold) {
     # de diferenca que ninguem percebe olhando a planilha.
     & $venvPython -m datalake.cli report
     $codigo = $LASTEXITCODE
+
+    # A pagina de estoque tambem: sem isto o modo -Gold atualizava gold, export e
+    # relatorios e deixava a pagina para tras -- a mesma inconsistencia silenciosa
+    # que o comentario acima descreve para os relatorios. E e o que torna util a
+    # queda para modo offline: a pagina volta a sair, marcada com a data do dado.
+    $catalogo = Join-Path $lakeRootFinal "lake.duckdb"
+    $estoqueScript = Join-Path $raiz "scripts\gerar_estoque.py"
+    if (-not (Test-Path $estoqueScript)) {
+        $estoqueScript = Join-Path $lakeRootFinal "gerar_estoque.py"
+    }
+    if ((Test-Path $estoqueScript) -and (Test-Path $catalogo)) {
+        Write-Host ""
+        Write-Host "    Gerando a pagina e a planilha de estoque minimo..." -ForegroundColor Cyan
+        & $venvPython $estoqueScript $catalogo
+    }
+
     Write-Host ""
     Write-Host "Arquivos em: $(Join-Path $lakeRootFinal 'export')"
+    if ($script:Degradado) {
+        Write-Host ""
+        Write-Host "=== CARGA DEGRADADA: o ERP nao foi lido ===" -ForegroundColor Yellow
+        Write-Host "A pagina foi regerada, mas com os dados que ja estavam no lake." -ForegroundColor Yellow
+        Write-Host "Ela mostra a data real do dado e avisa a desatualizacao." -ForegroundColor Yellow
+        Write-Host "Para voltar ao normal, restabeleca a rota ate $OracleHost`:$Port." -ForegroundColor Yellow
+        $codigo = 2   # nao-zero de proposito: a Tarefa Agendada registra o aviso
+    }
     Write-Host "Saida completa em: $saida"
     try { Stop-Transcript | Out-Null } catch { }
     exit $codigo
