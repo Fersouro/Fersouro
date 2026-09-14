@@ -202,13 +202,38 @@ if ($Estoque -or $Gold) {
 
 # ------------------------------------------------------------------- 4. venv
 Etapa 4 "Preparando o ambiente virtual"
-$venvPython = Join-Path $raiz ".venv\Scripts\python.exe"
-if (-not (Test-Path $venvPython)) {
-    & $python -m venv (Join-Path $raiz ".venv")
-    if (-not (Test-Path $venvPython)) { Parar "Falha ao criar o .venv." }
+$venvDir    = Join-Path $raiz ".venv"
+$venvPython = Join-Path $venvDir "Scripts\python.exe"
+$venvCfg    = Join-Path $venvDir "pyvenv.cfg"
+
+# Existir o python.exe nao basta. Um venv interrompido no meio da criacao --
+# Ctrl+C, queda, ou a pasta do projeto apagada enquanto rodava -- deixa o
+# executavel no lugar e o pyvenv.cfg para tras. O script antigo via o
+# python.exe, dizia "ambiente ja existia" e seguia; o pip entao falhava com
+# "No pyvenv.cfg file" e "pip install falhou", mensagem que manda procurar em
+# rede ou em pacote, e nao no ambiente quebrado. Aconteceu duas vezes.
+#
+# Agora o ambiente e VALIDADO: precisa ter o pyvenv.cfg e o python precisa
+# responder. Se qualquer um falhar, e refeito do zero em vez de arrastar o
+# problema para a etapa seguinte.
+$venvOk = (Test-Path $venvPython) -and (Test-Path $venvCfg)
+if ($venvOk) {
+    & $venvPython -c "import sys" 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) { $venvOk = $false }
+}
+
+if (-not $venvOk) {
+    if (Test-Path $venvDir) {
+        Write-Host "    ambiente virtual incompleto -- refazendo do zero" -ForegroundColor Yellow
+        Remove-Item -Recurse -Force $venvDir -ErrorAction SilentlyContinue
+    }
+    & $python -m venv $venvDir
+    if (-not (Test-Path $venvPython) -or -not (Test-Path $venvCfg)) {
+        Parar "Falha ao criar o .venv."
+    }
     Ok "ambiente criado"
 } else {
-    Ok "ambiente ja existia"
+    Ok "ambiente ja existia e responde"
 }
 # Chamar o python do venv direto dispensa o Activate.ps1 -- e o Activate e
 # justamente o que costuma esbarrar em politica de execucao.
