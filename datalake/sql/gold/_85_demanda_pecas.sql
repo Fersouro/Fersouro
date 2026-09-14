@@ -85,10 +85,26 @@ capa AS (
 ),
 
 -- Peca de industrializacao fora, uma vez so, antes da juncao grande.
-pecas AS (
-    SELECT empresa, item_estoque
+-- Cadastro reduzido a UMA linha por (empresa, item_estoque).
+--
+-- O join com o cadastro existe para duas coisas diferentes, e misturar as duas
+-- foi o erro: FILTRAR item de industrializacao, e ETIQUETAR a peca com codigo e
+-- descricao. Filtro com JOIN so e seguro se a chave for unica do outro lado --
+-- se nao for, cada item da nota casa com varias linhas do cadastro, as linhas se
+-- multiplicam e a demanda sai inflada. Alem de custar caro.
+--
+-- Aqui o filtro virou semi-juncao (EXISTS, no base) e a etiqueta vem deste
+-- cadastro agregado. Nenhum dos dois pode multiplicar linha, haja duplicata no
+-- cadastro ou nao.
+cadastro AS (
+    SELECT
+        empresa,
+        item_estoque,
+        any_value(item_estoque_pub)  AS item_estoque_pub,
+        any_value(des_item_estoque)  AS des_item_estoque,
+        any_value(marca)             AS marca
     FROM ccm__pec_item_estoque
-    WHERE tipo_industrializacao IS NULL
+    GROUP BY empresa, item_estoque
 ),
 
 base AS (
@@ -112,9 +128,15 @@ base AS (
       AND fmi.contador           = c.contador
     JOIN ccm__fat_tipo_transacao AS tt
       ON  tt.tipo_transacao = c.tipo_transacao
-    JOIN pecas AS pe
-      ON  pe.empresa      = fmi.empresa
-      AND pe.item_estoque = fmi.item_estoque
+    -- Semi-juncao: filtra sem multiplicar, mesmo que o cadastro tenha a peca
+    -- repetida. Um JOIN aqui duplicaria a nota uma vez por linha repetida.
+    WHERE EXISTS (
+        SELECT 1
+        FROM ccm__pec_item_estoque AS pe
+        WHERE pe.empresa              = fmi.empresa
+          AND pe.item_estoque         = fmi.item_estoque
+          AND pe.tipo_industrializacao IS NULL
+    )
 ),
 
 liquido AS (
@@ -214,7 +236,7 @@ SELECT
 
 FROM acumulado AS a
 CROSS JOIN parametros AS p
-JOIN ccm__pec_item_estoque AS pie
+JOIN cadastro AS pie
   ON  pie.empresa      = a.empresa
   AND pie.item_estoque = a.item_estoque
 ORDER BY a.revenda, a.valor_periodo DESC
