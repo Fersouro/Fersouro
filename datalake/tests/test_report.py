@@ -593,3 +593,43 @@ def test_sql_que_termina_em_comentario_nao_quebra(project, lake_com_gold, tmp_pa
     assert por_nome["comentario-no-fim"].status == "success", (
         por_nome["comentario-no-fim"].message
     )
+
+
+# ------------------------------------- parametro que so algumas abas usam
+
+RELATORIO_PARAM_POR_ABA = """
+name: param-por-aba
+title: Parametro usado so em uma aba
+parameters:
+  - name: nome_cliente
+    label: Cliente
+    type: texto
+    optional: true
+sheets:
+  - name: Filtrada
+    sql: |
+      SELECT nome, vlr_total FROM pedidos_cliente
+       WHERE ($nome_cliente IS NULL OR nome = $nome_cliente)
+  - name: Sem filtro
+    sql: |
+      SELECT nome, vlr_total FROM pedidos_cliente
+"""
+
+
+def test_parametro_nao_citado_pela_aba_nao_vai_para_o_duckdb(
+    project, lake_com_gold, tmp_path
+):
+    """Cada aba recebe so os parametros que cita.
+
+    O DuckDB recusa parametro nomeado ausente da consulta ("excess
+    parameters"). Passar o dicionario inteiro a todas as abas quebrava
+    justamente a aba que nao filtra nada -- e a mensagem de erro nao diz qual
+    aba falhou, so lista os parametros sobrando.
+    """
+    _escrever_relatorio(project, RELATORIO_PARAM_POR_ABA, "param.yml")
+    resultados = build_all(
+        lake_com_gold, apenas=["param-por-aba"], destino_dir=tmp_path / "saida"
+    )
+
+    r = resultados[0]
+    assert r.status == "success", r.message

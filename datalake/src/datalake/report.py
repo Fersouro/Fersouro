@@ -32,6 +32,7 @@ aba. Quem recebe a planilha por e-mail costuma nao saber nem de onde ela veio.
 from __future__ import annotations
 
 import datetime as dt
+import re
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -488,6 +489,25 @@ def _sheet_sql(sheet: SheetConfig, limite: int) -> str:
     return f"{base} LIMIT {int(limite)}"
 
 
+def _parametros_usados(sql: str, parametros):
+    """So os parametros que realmente aparecem neste SQL.
+
+    O DuckDB recusa parametro nomeado que nao e citado na consulta -- responde
+    "Parameter argument/count mismatch, identifiers of the excess parameters".
+    Como cada aba usa os parametros que quer (uma filtra por revenda e por
+    curva, outra so por revenda), entregar o dicionario inteiro a todas quebra
+    justamente a aba mais simples, e a mensagem nao diz qual aba foi.
+    """
+    if not parametros:
+        return parametros
+    usados = {
+        nome: valor
+        for nome, valor in parametros.items()
+        if re.search(rf"\${re.escape(nome)}\b", sql)
+    }
+    return usados or None
+
+
 def fetch_sheet(con, sheet: SheetConfig, max_rows: int, parametros=None):
     """Executa a aba. -> (colunas, linhas, marcas, total_real).
 
@@ -496,7 +516,8 @@ def fetch_sheet(con, sheet: SheetConfig, max_rows: int, parametros=None):
     """
     limite = min(sheet.limit, max_rows) if sheet.limit else max_rows
     sql = _sheet_sql(sheet, limite)
-    resultado = con.execute(sql, parametros) if parametros else con.execute(sql)
+    usados = _parametros_usados(sql, parametros)
+    resultado = con.execute(sql, usados) if usados else con.execute(sql)
     colunas_todas = [d[0] for d in resultado.description]
     dados = resultado.fetchall()
 
@@ -504,9 +525,12 @@ def fetch_sheet(con, sheet: SheetConfig, max_rows: int, parametros=None):
     if len(dados) == max_rows and (sheet.limit is None or sheet.limit > max_rows):
         # Bateu no teto do formato -- so aqui vale pagar uma contagem para
         # dizer quantas linhas ficaram de fora.
-        contagem = f"SELECT count(*) FROM ({sheet.sql}) AS _aba"
+        contagem = f"SELECT count(*) FROM (\n{sheet.sql}\n) AS _aba"
+        usados_contagem = _parametros_usados(contagem, parametros)
         total = (
-            con.execute(contagem, parametros) if parametros else con.execute(contagem)
+            con.execute(contagem, usados_contagem)
+            if usados_contagem
+            else con.execute(contagem)
         ).fetchone()[0]
 
     n_hl = len(sheet.highlights)
