@@ -68,8 +68,11 @@ sheets:
   - name: Curva A e B
     description: >-
       Todas as pecas da curva escolhida, das mais criticas para as demais.
-      Situacao RUPTURA e estoque zerado; ABAIXO DO SUGERIDO e o que a demanda
-      pede e nao tem.
+      O FILTRO usa a curva_erp (CLASS_ABC do cadastro). As colunas
+      curva_valor_12m e curva_qtd_12m sao calculadas pelos ultimos 12 meses e
+      servem so para comparar -- elas nunca marcam D, porque D nao existe em
+      Pareto. Situacao RUPTURA e estoque zerado; ABAIXO DO SUGERIDO e o que a
+      demanda pede e nao tem.
     sql: |
       WITH p AS (
           SELECT coalesce($cobertura, 1) AS meses_cobertura
@@ -104,7 +107,13 @@ sheets:
       )
       SELECT
           revenda, codigo, descricao, marca,
-          class_abc, curva_valor, curva_qtd,
+          -- Tres curvas, tres origens. Sem o sufixo no nome, quem le a
+          -- planilha nao tem como saber qual e a do cadastro: uma peca D no
+          -- ERP pode sair como A no calculo de 12 meses, e isso e informacao,
+          -- nao erro -- mas so se o nome da coluna disser de onde ela veio.
+          class_abc     AS curva_erp,
+          curva_valor   AS curva_valor_12m,
+          curva_qtd     AS curva_qtd_12m,
           qtd_12m, meses_com_venda, demanda_media_mensal,
           minimo_sugerido, disponivel,
           greatest(minimo_sugerido - disponivel, 0)             AS falta_comprar,
@@ -133,7 +142,8 @@ sheets:
           SELECT coalesce($cobertura, 1) AS meses_cobertura
       )
       SELECT
-          est.revenda, est.codigo, est.descricao, est.marca, est.class_abc,
+          est.revenda, est.codigo, est.descricao, est.marca,
+          est.class_abc                                         AS curva_erp,
           round(coalesce(dem.demanda_media_mensal, 0), 4)       AS demanda_media_mensal,
           CAST(ceil(coalesce(dem.demanda_media_mensal, 0) * p.meses_cobertura)
                AS BIGINT)                                       AS minimo_sugerido,
@@ -164,9 +174,10 @@ sheets:
 
   - name: Curva divergente
     description: >-
-      Pecas em que a curva do ERP nao bate com a dos ultimos 12 meses. Costuma
-      ser peca que mudou de patamar e ficou com a classificacao antiga -- vale
-      revisar o cadastro. Nao e erro do relatorio.
+      Pecas em que a curva_erp nao bate com a curva_valor_12m. Costuma ser peca
+      que mudou de patamar e ficou com a classificacao antiga -- vale revisar o
+      cadastro. Nao e erro do relatorio. Esta aba NAO filtra por curva: mostra
+      todas, inclusive as D do cadastro.
     sql: |
       SELECT
           est.revenda, est.codigo, est.descricao, est.marca,
