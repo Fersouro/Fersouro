@@ -1,3 +1,19 @@
+-- =============================================================================
+-- DESARMADO -- NAO ENTRA NA CARGA COM O "_" NO NOME
+--
+-- Motivo: falha com "Out of Memory Error" (limite de 4 GB em settings.yml).
+-- Nao produz nada ha semanas, e o relatorio oficina-faturamento ja aparece como
+-- "ignorado: depende de modelo ausente na gold" em toda execucao. Desarmar nao
+-- tira nada de ninguem -- so encurta a carga.
+--
+-- Suspeita adicional: um OOM pode se arrastar muito antes de desistir, e este
+-- modelo e o proximo depois do os_contatos -- exatamente onde cargas
+-- aparentemente travadas paravam. Pode ter sido ele o responsavel por travadas
+-- atribuidas a outros modelos.
+--
+-- PARA REATIVAR: descobrir o que consome a memoria (provavelmente uma juncao
+-- sem recorte de periodo), corrigir, medir, e so entao tirar o "_".
+-- =============================================================================
 -- Faturamento da oficina no grao da ORDEM DE SERVICO: pecas e servicos juntos.
 --
 -- Traducao da consulta que a equipe roda no Apollo. Ela era um UNION de dois
