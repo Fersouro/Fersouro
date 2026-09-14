@@ -151,30 +151,42 @@ elegivel AS (
 -- -- e a curva sairia sem nenhum item A, que e o contrario do que ela existe
 -- para mostrar. A regra correta e: a peca e A enquanto o acumulado ANTES dela
 -- ainda nao atingiu o corte.
-acumulado AS (
+-- Duas somas corridas simples (ROWS UNBOUNDED PRECEDING), nada mais.
+--
+-- A versao anterior pedia tambem um quadro ROWS BETWEEN UNBOUNDED PRECEDING
+-- AND 1 PRECEDING para obter o acumulado ATE A LINHA ANTERIOR. Esse quadro nao
+-- e uma soma corrida: dependendo do motor ele e avaliado linha a linha, O(n^2).
+-- Com dezenas de milhares de pecas viram bilhoes de operacoes -- e foi o que
+-- fez o modelo rodar horas sem terminar.
+--
+-- O mesmo numero sai por subtracao: o acumulado antes da linha e o acumulado
+-- ate a linha menos o valor da propria linha. Aritmetica, nao janela.
+corrida AS (
     SELECT
         e.*,
         sum(e.valor_periodo) OVER (
             PARTITION BY e.revenda ORDER BY e.valor_periodo DESC, e.item_estoque
-            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-        ) / nullif(sum(e.valor_periodo) OVER (PARTITION BY e.revenda), 0)
-                                                            AS acum_valor,
-        coalesce(sum(e.valor_periodo) OVER (
-            PARTITION BY e.revenda ORDER BY e.valor_periodo DESC, e.item_estoque
-            ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-        ), 0) / nullif(sum(e.valor_periodo) OVER (PARTITION BY e.revenda), 0)
-                                                            AS acum_valor_antes,
+            ROWS UNBOUNDED PRECEDING
+        )                                                   AS soma_valor_ate_aqui,
+        sum(e.valor_periodo) OVER (PARTITION BY e.revenda)  AS total_valor,
         sum(e.qtd_periodo) OVER (
             PARTITION BY e.revenda ORDER BY e.qtd_periodo DESC, e.item_estoque
-            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-        ) / nullif(sum(e.qtd_periodo) OVER (PARTITION BY e.revenda), 0)
-                                                            AS acum_qtd,
-        coalesce(sum(e.qtd_periodo) OVER (
-            PARTITION BY e.revenda ORDER BY e.qtd_periodo DESC, e.item_estoque
-            ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
-        ), 0) / nullif(sum(e.qtd_periodo) OVER (PARTITION BY e.revenda), 0)
-                                                            AS acum_qtd_antes
+            ROWS UNBOUNDED PRECEDING
+        )                                                   AS soma_qtd_ate_aqui,
+        sum(e.qtd_periodo)   OVER (PARTITION BY e.revenda)  AS total_qtd
     FROM elegivel AS e
+),
+
+acumulado AS (
+    SELECT
+        c.*,
+        -- acum_*       : inclui a propria linha -> e o numero que se LE
+        -- acum_*_antes : para na linha anterior -> e o numero que CLASSIFICA
+        c.soma_valor_ate_aqui / nullif(c.total_valor, 0)                     AS acum_valor,
+        (c.soma_valor_ate_aqui - c.valor_periodo) / nullif(c.total_valor, 0) AS acum_valor_antes,
+        c.soma_qtd_ate_aqui   / nullif(c.total_qtd, 0)                       AS acum_qtd,
+        (c.soma_qtd_ate_aqui  - c.qtd_periodo)  / nullif(c.total_qtd, 0)     AS acum_qtd_antes
+    FROM corrida AS c
 )
 
 SELECT
