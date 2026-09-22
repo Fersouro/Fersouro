@@ -70,6 +70,10 @@ cava_folga        = 0.15;   // folga lateral entre cava e medalha (por lado)
 cava_folga_z      = 0.1;    // folga no fundo da cava (espaco para a cola)
 medalha_margem    = 0.25;   // sobra da chapa da medalha alem da arte da logo
 medalha_parede    = 1.2;    // material entre o recorte da medalha e o furo
+// true = o verso tambem recebe cava, para a plaquinha do nome impressa a parte
+cava_verso        = false;
+cava_verso_prof   = 0.8;    // profundidade da cava do verso
+plaquinha_diam    = 45.0;   // diametro da plaquinha do nome
 
 /* [Fonte e qualidade] ---------------------------------------------------- */
 fonte             = "Liberation Sans:style=Bold";
@@ -181,6 +185,21 @@ module medalha() {
     }
 }
 
+// Contorno da plaquinha do nome (mesmo recorte em volta do furo)
+module contorno_plaquinha2d(folga = 0) {
+    difference() {
+        circle(r = plaquinha_diam/2 + folga, $fn = resolucao);
+        translate([0, furo_y])
+            circle(r = furo_r + medalha_parede - folga, $fn = 96);
+    }
+}
+
+// Volume retirado do verso para receber a plaquinha
+module cava_verso_solida() {
+    translate([0, 0, -espessura/2 - eps])
+        linear_extrude(cava_verso_prof + eps) contorno_plaquinha2d(cava_folga);
+}
+
 // Nome do verso: embutido rente a face (com casca) ou em alto-relevo (sem casca)
 module nome_solido() {
     if (verso_plano)
@@ -189,6 +208,15 @@ module nome_solido() {
     else
         translate([0, 0, -espessura/2 - relevo])
             linear_extrude(relevo + sobrepor) verso2d_espelhado();
+}
+
+// Plaquinha do nome: chapa que entra na cava do verso + nome em relevo
+module plaquinha() {
+    union() {
+        translate([0, 0, -espessura/2])
+            linear_extrude(cava_verso_prof - cava_folga_z) contorno_plaquinha2d(0);
+        nome_solido();
+    }
 }
 
 // Volume a remover quando o verso e gravado em baixo-relevo
@@ -223,6 +251,7 @@ module corpo_solido() {
         if (!verso_plano && modo_verso == "baixo") nome_cavidade();
         if (verso_plano) { fatia_casca(); nome_solido(); }
         if (cava_logo)    cava_solida();
+        if (cava_verso)   cava_verso_solida();
     }
 }
 
@@ -234,11 +263,13 @@ module parte_logo()     { difference() { logo_solido();  furo(); } }
 module parte_nome()     { difference() { nome_solido();  furo(); } }
 module parte_casca()    { difference() { casca_solida(); nome_solido(); furo(); } }
 module parte_medalha()  { difference() { medalha();      furo(); } }
+module parte_plaquinha(){ difference() { plaquinha();    furo(); } }
 module parte_completa() {
     difference() {
         union() {
             corpo_solido();
             if (cava_logo) medalha(); else logo_solido();
+            if (cava_verso) plaquinha();
             if (verso_plano) { casca_solida(); nome_solido(); }
         }
         furo();
@@ -251,6 +282,7 @@ module chaveiro() {
     else if (parte == "nome")  parte_nome();
     else if (parte == "casca") parte_casca();
     else if (parte == "medalha") parte_medalha();
+    else if (parte == "plaquinha") parte_plaquinha();
     else                       parte_completa();
 }
 

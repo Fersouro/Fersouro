@@ -34,6 +34,8 @@ FONTE_TTF = Path("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf")
 MARGEM_BORDA = 2.5
 # Folga entre o texto da marca e a coroa de patinhas.
 MARGEM_COROA = 0.5
+# Folga entre o nome e a borda da plaquinha.
+MARGEM_PLAQUINHA = 1.5
 # Cores usadas so na imagem de preview (a peca sai na cor do filamento).
 COR1 = "#12695c"   # verde BageVet  -> corpo e nome
 COR2 = "#f4f1e8"   # off-white      -> casca do verso e logo da frente
@@ -198,8 +200,11 @@ def preview(destino: Path, slug: str, defs: dict[str, object],
             duas_cores: bool, pecas_cava: bool = False) -> None:
     # render() por parte: sem ele o preview do OpenSCAD pinta tudo de uma cor so
     if pecas_cava:
-        pecas = (f'color("{COR1}") render() parte_corpo();\n'
-                 f'color("{COR2}") render() parte_medalha();')
+        linhas = [f'color("{COR1}") render() parte_corpo();',
+                  f'color("{COR2}") render() parte_medalha();']
+        if defs.get("cava_verso") == "true" and defs.get("nome"):
+            linhas.append(f'color("{COR2}") render() parte_plaquinha();')
+        pecas = "\n".join(linhas)
     elif duas_cores:
         pecas = "\n".join(
             f'color("{COR1 if cor == 1 else COR2}") render() parte_{p}();'
@@ -228,7 +233,8 @@ def preview(destino: Path, slug: str, defs: dict[str, object],
 
 # --------------------------------------------------------------------------- #
 def gerar(nome: str, args, par: dict[str, float], fonte: Fonte, destino: Path) -> None:
-    raio_util = par["diametro"] / 2 - MARGEM_BORDA
+    raio_util = (par["plaquinha_diam"] / 2 - MARGEM_PLAQUINHA if args.cava_verso
+                 else par["diametro"] / 2 - MARGEM_BORDA)
     raio_logo = par["logo_diametro"] / 2 - par["pata_coroa"] * 0.95 - MARGEM_COROA
 
     if nome is None:                       # corpo-base sem nome no verso
@@ -252,15 +258,19 @@ def gerar(nome: str, args, par: dict[str, float], fonte: Fonte, destino: Path) -
         "escala_x_logo": esc_logo,
         "escala_x_sub": esc_sub,
         "casca_verso": casca,
-        "modo_verso": "liso" if nome is None else args.verso,
+        "modo_verso": ("liso" if (nome is None or args.cava_verso)
+                       else args.verso),
         "cava_logo": "true" if args.cava else "false",
+        "cava_verso": "true" if args.cava_verso else "false",
     }
 
     if nome is None:
         print("\ncorpo-base (verso liso, serve a qualquer nome)")
     else:
-        total = par["espessura"] + par["relevo"] * (
-            1 if (casca > 0 or args.verso == "baixo" or args.cava) else 2)
+        # relevo em uma face (casca/gravado/cava so na frente) ou nas duas
+        uma_face = (casca > 0 or args.verso == "baixo"
+                    or (args.cava and not args.cava_verso))
+        total = par["espessura"] + par["relevo"] * (1 if uma_face else 2)
         print(f"\n'{nome}'  ->  letras de {par['altura_nome']:.1f} mm, "
               f"{larg_nome:.1f} mm de largura, condensacao {esc_nome:.3f}"
               f"{' (natural)' if esc_nome == 1 else ' (ajustada ao disco)'}"
@@ -268,17 +278,33 @@ def gerar(nome: str, args, par: dict[str, float], fonte: Fonte, destino: Path) -
 
     slug = limpar(nome) if nome else "BASE"
     if args.cava:
-        alvo = (destino / "chaveiro_bagevet_corpo-base-cava.stl" if nome is None
-                else destino / f"chaveiro_bagevet_{slug}_corpo-cava.stl")
-        rodar_openscad(alvo, SCAD, {**base, "parte": "corpo"})
-        validar(alvo)
+        # com cava nos dois lados o corpo e universal, entao sai uma vez so
+        if args.cava_verso:
+            corpo = destino / "chaveiro_bagevet_corpo-base-2cavas.stl"
+            if _CACHE_LOGO.get("corpo2"):
+                print(f"   {corpo.name}: ja gerado (serve a qualquer nome)")
+            else:
+                rodar_openscad(corpo, SCAD, {**base, "parte": "corpo"})
+                validar(corpo)
+                _CACHE_LOGO["corpo2"] = corpo
+        else:
+            corpo = (destino / "chaveiro_bagevet_corpo-base-cava.stl" if nome is None
+                     else destino / f"chaveiro_bagevet_{slug}_corpo-cava.stl")
+            rodar_openscad(corpo, SCAD, {**base, "parte": "corpo"})
+            validar(corpo)
+
         medalha = destino / "chaveiro_bagevet_medalha-logo.stl"
-        if not medalha.exists() or not _CACHE_LOGO.get("medalha"):
+        if _CACHE_LOGO.get("medalha"):
+            print(f"   {medalha.name}: ja gerada (a logo nao muda)")
+        else:
             rodar_openscad(medalha, SCAD, {**base, "parte": "medalha"})
             validar(medalha)
             _CACHE_LOGO["medalha"] = medalha
-        else:
-            print(f"   {medalha.name}: ja gerada (a logo nao muda)")
+
+        if args.cava_verso and nome is not None:
+            plaq = destino / f"chaveiro_bagevet_{slug}_plaquinha.stl"
+            rodar_openscad(plaq, SCAD, {**base, "parte": "plaquinha"})
+            validar(plaq)
     elif duas_cores:
         for parte, _cor, sufixo in PARTES_2CORES:
             caminho = destino / f"chaveiro_bagevet_{slug}_{sufixo}.stl"
@@ -307,6 +333,9 @@ def main() -> None:
                     help="nome do pet (pode repetir a opcao)")
     ap.add_argument("--nomes", help="varios nomes separados por virgula")
     ap.add_argument("--lista", help="arquivo texto com um nome por linha")
+    ap.add_argument("--cava-verso", dest="cava_verso", action="store_true",
+                    help="cava nos DOIS lados: corpo universal + medalha da logo "
+                         "+ uma plaquinha por nome (implica --cava)")
     ap.add_argument("--cava", action="store_true",
                     help="corpo-base com cava na frente + medalha da logo "
                          "impressa em separado (verso liso, serve a qualquer nome)")
@@ -319,6 +348,8 @@ def main() -> None:
     ap.add_argument("--saida", default=str(AQUI / "stl"), help="pasta de saida")
     ap.add_argument("--preview", action="store_true", help="gera PNG das duas faces")
     args = ap.parse_args()
+    if args.cava_verso:
+        args.cava = True
 
     nomes = list(args.nome)
     if args.nomes:
