@@ -3,6 +3,12 @@
 //  Unidades: milimetros. Origem no centro do disco, furo para o +Y.
 //  Frente (lado A, +Z): coroa de patinhas + "BageVet" + "MEDICINA ANIMAL"
 //  Verso  (lado B, -Z): patinha + nome do pet (parametrico)
+//
+//  Uma cor .... uma peca so (parte = "completo").
+//  Duas cores . quatro partes no mesmo sistema de coordenadas:
+//               "corpo" e "nome" na cor 1 (verde), "casca" e "logo" na cor 2
+//               (branco). Basta carregar as quatro no slicer e dar um filamento
+//               a cada uma - elas ja vem encaixadas.
 // =============================================================================
 
 /* [Personalizacao] ------------------------------------------------------- */
@@ -44,27 +50,37 @@ nome_y            = -5.5;   // linha de base do nome
 pata_verso        = 8.0;    // largura da patinha acima do nome
 pata_verso_y      = 8.0;    // centro vertical da patinha do verso
 
+/* [Cores e partes] ------------------------------------------------------- */
+// Casca de outra cor no verso. 0 = sem casca (peca de uma cor so).
+// Com casca > 0 o nome vira um embutido rente a superficie, na cor do corpo:
+// imprime deitado, sem suporte nenhum, e fica igual a referencia.
+casca_verso       = 0;
+// Verso quando NAO ha casca: "relevo" (alto-relevo) ou "baixo" (gravado)
+modo_verso        = "relevo";
+// "completo" = peca inteira | "corpo" | "casca" | "logo" | "nome"
+parte             = "completo";
+
 /* [Fonte e qualidade] ---------------------------------------------------- */
 fonte             = "Liberation Sans:style=Bold";
-// "relevo" = alto-relevo nos dois lados (conforme especificacao)
-// "baixo"  = verso gravado para baixo (permite imprimir deitado sem suporte)
-modo_verso        = "relevo";
-// "completo" = peca inteira | "corpo" / "detalhe" = arquivos p/ 2 cores (MMU)
-parte             = "completo";
 resolucao         = 180;    // segmentos do disco
+renderizar_peca   = true;   // false so para montagens coloridas externas
 
 /* [Calculos] ------------------------------------------------------------- */
 R            = diametro / 2;
 furo_r       = furo_diametro / 2;
 furo_y       = R - furo_margem - furo_r;   // centro do furo
 raio_coroa   = logo_diametro/2 - pata_coroa * 0.51;
+verso_plano  = casca_verso > 0;            // nome embutido na casca
 eps          = 0.01;
+// Na peca unica os relevos entram 0.01 mm no corpo (evita faces coplanares na
+// uniao). Exportando partes separadas por cor, elas saem exatamente encaixadas.
+sobrepor     = (parte == "completo") ? eps : 0;
 
 // -----------------------------------------------------------------------------
 //  Patinha 2D (largura total = tam, altura ~= 0.94 * tam)
+//  Proporcoes escolhidas para manter >= 0.45 mm de folga entre os dedinhos
+//  quando a patinha tem 4.2 mm (menor uso do desenho) -> separa bem com bico 0.4.
 // -----------------------------------------------------------------------------
-// Proporcoes escolhidas para manter >= 0.45 mm de folga entre os dedinhos
-// quando a patinha tem 4.2 mm (menor uso do desenho) -> separa bem com bico 0.4.
 module pata2d(tam = 5) {
     scale(tam) {
         translate([0, -0.19]) scale([1, 0.86]) circle(r = 0.29, $fn = 48);
@@ -103,9 +119,14 @@ module verso2d() {
     translate([0, pata_verso_y]) pata2d(pata_verso);
 }
 
+// Espelhado em X: e o eixo pelo qual se vira um chaveiro pendurado, entao o
+// furo continua em cima e o nome aparece na leitura correta.
+module verso2d_espelhado() { mirror([1, 0, 0]) verso2d(); }
+
 // -----------------------------------------------------------------------------
-//  Corpo do disco com borda arredondada (perfil convexo -> solido fechado)
+//  Solidos elementares
 // -----------------------------------------------------------------------------
+// Corpo do disco com borda arredondada (perfil convexo -> solido fechado)
 module disco() {
     rotate_extrude($fn = resolucao)
         hull() {
@@ -117,19 +138,35 @@ module disco() {
         }
 }
 
-// Relevo da frente (sobe a partir da face superior)
-module detalhe_frente() {
-    translate([0, 0, espessura/2 - eps])
-        linear_extrude(relevo + eps) frente2d();
+// Relevo da frente: sobe a partir da face superior
+module logo_solido() {
+    translate([0, 0, espessura/2 - sobrepor])
+        linear_extrude(relevo + sobrepor) frente2d();
 }
 
-// Relevo do verso: desce a partir da face inferior. O giro e em torno de Y
-// (eixo vertical da peca pendurada), entao ao virar o chaveiro o furo continua
-// em cima e o nome aparece na leitura correta.
-module detalhe_verso() {
-    translate([0, 0, -espessura/2 + eps]) rotate([0, 180, 0])
-        linear_extrude(relevo + eps) verso2d();
+// Nome do verso: embutido rente a face (com casca) ou em alto-relevo (sem casca)
+module nome_solido() {
+    if (verso_plano)
+        translate([0, 0, -espessura/2])
+            linear_extrude(casca_verso) verso2d_espelhado();
+    else
+        translate([0, 0, -espessura/2 - relevo])
+            linear_extrude(relevo + sobrepor) verso2d_espelhado();
 }
+
+// Volume a remover quando o verso e gravado em baixo-relevo
+module nome_cavidade() {
+    translate([0, 0, -espessura/2 - eps])
+        linear_extrude(relevo + eps) verso2d_espelhado();
+}
+
+// Fatia que define a casca do verso (do fundo ate -espessura/2 + casca_verso)
+module fatia_casca() {
+    translate([-R - 2, -R - 2, -espessura/2 - relevo - 1])
+        cube([2*R + 4, 2*R + 4, casca_verso + relevo + 1]);
+}
+
+module casca_solida() { intersection() { disco(); fatia_casca(); } }
 
 module furo() {
     translate([0, furo_y, 0])
@@ -138,35 +175,43 @@ module furo() {
 }
 
 // -----------------------------------------------------------------------------
-//  Montagem
+//  Corpo (cor 1), ja descontando casca / gravacao / embutido do nome
 // -----------------------------------------------------------------------------
-module corpo() {
-    if (modo_verso == "baixo")
-        difference() { disco(); detalhe_verso(); }
-    else
-        disco();
+module corpo_solido() {
+    difference() {
+        union() {
+            disco();
+            if (!verso_plano && modo_verso == "relevo") nome_solido();
+        }
+        if (!verso_plano && modo_verso == "baixo") nome_cavidade();
+        if (verso_plano) { fatia_casca(); nome_solido(); }
+    }
+}
+
+// -----------------------------------------------------------------------------
+//  Partes exportaveis
+// -----------------------------------------------------------------------------
+module parte_corpo()    { difference() { corpo_solido(); furo(); } }
+module parte_logo()     { difference() { logo_solido();  furo(); } }
+module parte_nome()     { difference() { nome_solido();  furo(); } }
+module parte_casca()    { difference() { casca_solida(); nome_solido(); furo(); } }
+module parte_completa() {
+    difference() {
+        union() {
+            corpo_solido();
+            logo_solido();
+            if (verso_plano) { casca_solida(); nome_solido(); }
+        }
+        furo();
+    }
 }
 
 module chaveiro() {
-    if (parte == "corpo")
-        difference() { corpo(); furo(); }
-    else if (parte == "detalhe")
-        difference() {
-            union() {
-                detalhe_frente();
-                if (modo_verso != "baixo") detalhe_verso();
-            }
-            furo();
-        }
-    else
-        difference() {
-            union() {
-                corpo();
-                detalhe_frente();
-                if (modo_verso != "baixo") detalhe_verso();
-            }
-            furo();
-        }
+    if      (parte == "corpo") parte_corpo();
+    else if (parte == "logo")  parte_logo();
+    else if (parte == "nome")  parte_nome();
+    else if (parte == "casca") parte_casca();
+    else                       parte_completa();
 }
 
-chaveiro();
+if (renderizar_peca) chaveiro();
