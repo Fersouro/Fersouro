@@ -18,6 +18,7 @@ lote a partir de uma lista de pets.
 | Arquivo | Descrição |
 | --- | --- |
 | `chaveiro_bagevet.scad` | modelo paramétrico (fonte editável, OpenSCAD) |
+| `PROMPT.md` | especificação, decisões tomadas e o prompt guardado para novos nomes |
 | `gerar_chaveiro.py` | gera os STLs de cada pet, ajusta o texto e valida as malhas |
 | `pets.txt` | exemplo de lista para geração em lote |
 | `stl/chaveiro_bagevet_BOLINHA_cor1-corpo.stl` | **2 cores** — corpo (cor 1, verde) |
@@ -26,6 +27,7 @@ lote a partir de uma lista de pets.
 | `stl/chaveiro_bagevet_BOLINHA_cor2-logo.stl` | **2 cores** — marca da frente (cor 2, branco) |
 | `stl/chaveiro_bagevet_LUNA_*.stl` | segundo exemplo, mesmo conjunto |
 | `stl/chaveiro_bagevet_BOLINHA.stl` | **1 cor** — peça única, alto-relevo nos dois lados |
+| `stl/chaveiro_bagevet_LUNA.stl` | **1 cor** — peça única, alto-relevo nos dois lados |
 | `stl/chaveiro_bagevet_BOLINHA_verso_baixo.stl` | **1 cor** — verso gravado, imprime deitado sem suporte |
 
 ## Trocar o nome do pet
