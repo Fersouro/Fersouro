@@ -24,7 +24,7 @@ escala_x_sub      = 1.0;
 
 /* [Geometria do disco] --------------------------------------------------- */
 diametro          = 50.0;   // diametro externo
-espessura         = 3.5;    // espessura do corpo do disco (sem relevo)
+espessura         = 3.6;    // espessura do disco (18 camadas de 0,2 mm)
 raio_borda        = 1.0;    // arredondamento da borda externa (chanfro)
 relevo            = 1.0;    // altura do relevo positivo (>= 0.8 p/ legibilidade)
 
@@ -42,7 +42,7 @@ logo_y            = 1.0;    // linha de base de "BageVet"
 altura_sub        = 1.8;    // altura das letras do subtitulo
 sub_y             = -4.6;   // linha de base do subtitulo
 espacamento_sub   = 1.06;   // espacejamento entre letras do subtitulo
-engrossar_sub     = 0.06;   // engrossa o subtitulo (garante parede imprimivel)
+engrossar_sub     = 0.08;   // engrossa o subtitulo (traco de 0,52 mm)
 
 /* [Verso - nome do pet] -------------------------------------------------- */
 altura_nome       = 8.0;    // altura das letras do nome
@@ -67,7 +67,7 @@ parte             = "completo";
 cava_logo         = false;
 cava_profundidade = 1.0;    // profundidade da cava
 cava_folga        = 0.15;   // folga lateral entre cava e medalha (por lado)
-cava_folga_z      = 0.1;    // folga no fundo da cava (espaco para a cola)
+cava_folga_z      = 0.2;    // folga no fundo da cava (1 camada, para a cola)
 medalha_margem    = 0.25;   // sobra da chapa da medalha alem da arte da logo
 medalha_parede    = 1.2;    // material entre o recorte da medalha e o furo
 // true = o verso tambem recebe cava, para a plaquinha do nome impressa a parte

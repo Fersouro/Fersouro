@@ -133,8 +133,12 @@ viável nesta escala: as paredes entre as cavas dos dedinhos ficariam com
 - **Camada**: 0,15–0,20 mm. O relevo da frente (1,0 mm) dá 5 a 7 camadas e a
   casca do verso (0,6 mm) dá 3 a 4.
 - **Parede/preenchimento**: 3 perímetros, 20–30 %.
+- **Fatiamento conferido** (PrusaSlicer, bico 0,4 mm, camada 0,2 mm, 3 paredes,
+  20 % de preenchimento): corpo em 18 camadas (25 min), medalha em 9 camadas
+  (10 min) e plaquinha em 8 camadas (11 min), sem nenhum aviso. Todas as cotas
+  em Z são múltiplos de 0,2 mm, então nada fica com uma camada quebrada.
 - **Bico**: 0,4 mm. Medidas críticas do desenho: o traço mais fino é o do
-  subtítulo `MEDICINA ANIMAL`, com 0,48 mm (já engrossado no modelo); a menor
+  subtítulo `MEDICINA ANIMAL`, com 0,52 mm (já engrossado no modelo); a menor
   folga entre os dedinhos das patinhas da coroa é 0,46 mm e cada dedinho tem
   0,88 mm. As letras do nome têm 1,43 mm de traço e as de `BageVet`, 0,84 mm.
 - **Argola**: o furo de 5 mm aceita argola de 20–25 mm.
@@ -152,7 +156,7 @@ imprime deitado sem nenhum suporte, com 4,5 mm de espessura total.
 | Item | Valor |
 | --- | --- |
 | Diâmetro externo | 50,00 mm |
-| Espessura do disco | 3,50 mm |
+| Espessura do disco | 3,60 mm (18 camadas de 0,2 mm) |
 | Arredondamento da borda externa | raio 1,0 mm (toda a volta) |
 | Furo da argola | Ø 5,00 mm, centro a 16,5 mm do centro |
 | Borda do furo → borda externa | 6,00 mm |
@@ -160,12 +164,12 @@ imprime deitado sem nenhum suporte, com 4,5 mm de espessura total.
 | Nome do verso | letras de 8,0 mm de altura |
 | Patinha do verso | 8,0 mm de largura, acima do nome |
 | Casca colorida do verso (2 cores) | 0,60 mm |
-| Cava da logo (logo aplicada) | Ø 34,80 mm, 1,00 mm de profundidade |
-| Medalha da logo | Ø 34,50 mm, 1,90 mm de altura (0,90 mm na cava + 1,00 mm de relevo) |
-| Cava do verso | Ø 45,30 mm, 0,80 mm de profundidade |
-| Plaquinha do nome | Ø 45,00 mm, 1,70 mm de altura (0,70 mm na cava + 1,00 mm de relevo) |
-| Núcleo do corpo entre as duas cavas | 1,70 mm |
-| Espessura total | 4,50 mm (2 cores) · 5,50 mm (1 cor, relevo nos dois lados) |
+| Cava da logo (logo aplicada) | Ø 34,80 mm, 1,00 mm (5 camadas) |
+| Medalha da logo | Ø 34,50 mm, 1,80 mm (chapa 0,80 + relevo 1,00) |
+| Cava do verso | Ø 45,30 mm, 0,80 mm (4 camadas) |
+| Plaquinha do nome | Ø 45,00 mm, 1,60 mm (chapa 0,60 + relevo 1,00) |
+| Núcleo do corpo entre as duas cavas | 1,80 mm |
+| Espessura total | 4,60 mm (2 cores) · 5,60 mm (1 cor e peças aplicadas) |
 | Malhas | todas fechadas (manifold), com volume positivo |
 
 ## Ajustes rápidos no `.scad`
