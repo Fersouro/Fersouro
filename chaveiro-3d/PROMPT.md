@@ -9,6 +9,7 @@ O modelo já está pronto: só rodar o gerador com o nome desejado.
 
 ```bash
 cd chaveiro-3d
+python3 gerar_chaveiro.py --cava                        # corpo-base com cava + medalha da logo
 python3 gerar_chaveiro.py --nome REX --cores 2          # 2 cores (4 partes)
 python3 gerar_chaveiro.py --nome REX                    # peça única, 1 cor
 python3 gerar_chaveiro.py --nomes "REX,MIA,TOBIAS" --cores 2
@@ -47,6 +48,7 @@ Requisitos: `openscad` e `python3 -m pip install fonttools trimesh`.
 | Altura do nome fixa em 8 mm, condensando a largura | mantém a medida pedida; nomes longos (ex.: `BOLINHA`, fator 0,852) só ficam um pouco mais estreitos |
 | Patinha reproporcionada | nas proporções iniciais a folga entre os dedinhos da coroa ficava em 0,25 mm e borraria num bico de 0,4 mm; hoje são 0,46 mm |
 | Subtítulo engrossado em 0,06 mm | leva o traço mais fino da peça de 0,36 mm para 0,48 mm, acima do que um bico de 0,4 mm resolve |
+| Cava da logo como peça única (medalha) | a logo é feita de ~30 sólidos soltos (8 patinhas e as letras); cavas com a silhueta exata deixariam paredes de 0,16 mm no corpo e peças soltas para encaixar uma a uma |
 | Verso espelhado no eixo vertical | virando o chaveiro pendurado, o furo continua em cima e o nome fica na leitura correta |
 
 ## Limites conhecidos

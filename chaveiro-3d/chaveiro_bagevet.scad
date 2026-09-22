@@ -55,10 +55,21 @@ pata_verso_y      = 8.0;    // centro vertical da patinha do verso
 // Com casca > 0 o nome vira um embutido rente a superficie, na cor do corpo:
 // imprime deitado, sem suporte nenhum, e fica igual a referencia.
 casca_verso       = 0;
-// Verso quando NAO ha casca: "relevo" (alto-relevo) ou "baixo" (gravado)
+// Verso quando NAO ha casca: "relevo" (alto-relevo), "baixo" (gravado) ou
+// "liso" (sem nada - corpo-base que serve para varios nomes)
 modo_verso        = "relevo";
-// "completo" = peca inteira | "corpo" | "casca" | "logo" | "nome"
+// "completo" = peca inteira | "corpo" | "casca" | "logo" | "nome" | "medalha"
 parte             = "completo";
+
+/* [Logo aplicada (cava + medalha)] --------------------------------------- */
+// true = a frente recebe uma CAVA no lugar do relevo, e a logo vira uma
+// medalha impressa em separado que encaixa nessa cava.
+cava_logo         = false;
+cava_profundidade = 1.0;    // profundidade da cava
+cava_folga        = 0.15;   // folga lateral entre cava e medalha (por lado)
+cava_folga_z      = 0.1;    // folga no fundo da cava (espaco para a cola)
+medalha_margem    = 0.25;   // sobra da chapa da medalha alem da arte da logo
+medalha_parede    = 1.2;    // material entre o recorte da medalha e o furo
 
 /* [Fonte e qualidade] ---------------------------------------------------- */
 fonte             = "Liberation Sans:style=Bold";
@@ -144,6 +155,32 @@ module logo_solido() {
         linear_extrude(relevo + sobrepor) frente2d();
 }
 
+// Contorno da medalha: disco da logo com um recorte em volta do furo da argola.
+// folga > 0 aumenta a peca (usado para abrir a cava com folga de montagem).
+module contorno_medalha2d(folga = 0) {
+    difference() {
+        circle(r = logo_diametro/2 + medalha_margem + folga, $fn = resolucao);
+        translate([0, furo_y])
+            circle(r = furo_r + medalha_parede - folga, $fn = 96);
+    }
+}
+
+// Volume retirado da frente para receber a medalha
+module cava_solida() {
+    translate([0, 0, espessura/2 - cava_profundidade])
+        linear_extrude(cava_profundidade + eps) contorno_medalha2d(cava_folga);
+}
+
+// Medalha da logo: chapa que entra na cava + relevo da marca por cima
+module medalha() {
+    union() {
+        translate([0, 0, espessura/2 - cava_profundidade + cava_folga_z])
+            linear_extrude(cava_profundidade - cava_folga_z) contorno_medalha2d(0);
+        translate([0, 0, espessura/2 - eps])
+            linear_extrude(relevo + eps) frente2d();
+    }
+}
+
 // Nome do verso: embutido rente a face (com casca) ou em alto-relevo (sem casca)
 module nome_solido() {
     if (verso_plano)
@@ -185,6 +222,7 @@ module corpo_solido() {
         }
         if (!verso_plano && modo_verso == "baixo") nome_cavidade();
         if (verso_plano) { fatia_casca(); nome_solido(); }
+        if (cava_logo)    cava_solida();
     }
 }
 
@@ -195,11 +233,12 @@ module parte_corpo()    { difference() { corpo_solido(); furo(); } }
 module parte_logo()     { difference() { logo_solido();  furo(); } }
 module parte_nome()     { difference() { nome_solido();  furo(); } }
 module parte_casca()    { difference() { casca_solida(); nome_solido(); furo(); } }
+module parte_medalha()  { difference() { medalha();      furo(); } }
 module parte_completa() {
     difference() {
         union() {
             corpo_solido();
-            logo_solido();
+            if (cava_logo) medalha(); else logo_solido();
             if (verso_plano) { casca_solida(); nome_solido(); }
         }
         furo();
@@ -211,6 +250,7 @@ module chaveiro() {
     else if (parte == "logo")  parte_logo();
     else if (parte == "nome")  parte_nome();
     else if (parte == "casca") parte_casca();
+    else if (parte == "medalha") parte_medalha();
     else                       parte_completa();
 }
 

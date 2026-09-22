@@ -29,6 +29,8 @@ lote a partir de uma lista de pets.
 | `stl/chaveiro_bagevet_BOLINHA.stl` | **1 cor** — peça única, alto-relevo nos dois lados |
 | `stl/chaveiro_bagevet_LUNA.stl` | **1 cor** — peça única, alto-relevo nos dois lados |
 | `stl/chaveiro_bagevet_BOLINHA_verso_baixo.stl` | **1 cor** — verso gravado, imprime deitado sem suporte |
+| `stl/chaveiro_bagevet_corpo-base-cava.stl` | **logo aplicada** — corpo-base com a cava na frente, verso liso |
+| `stl/chaveiro_bagevet_medalha-logo.stl` | **logo aplicada** — a logo completa, para imprimir em separado |
 
 ## Trocar o nome do pet
 
@@ -75,6 +77,36 @@ Sem impressora multimaterial dá para usar os mesmos arquivos com **troca manual
 de filamento**: a casca do verso e o nome ocupam os 0,6 mm iniciais e a marca da
 frente começa em 3,5 mm de altura.
 
+## Logo aplicada (cava + medalha)
+
+Para imprimir a logo em separado, numa cor diferente, e encaixá-la no corpo:
+
+```bash
+python3 gerar_chaveiro.py --cava                 # corpo-base (verso liso) + medalha
+python3 gerar_chaveiro.py --cava --nome REX      # corpo com o nome no verso + medalha
+```
+
+Saem dois arquivos:
+
+- `chaveiro_bagevet_corpo-base-cava.stl` — disco de Ø50 × 3,5 mm com uma **cava
+  de 1,0 mm** na frente e o **verso completamente liso**, para servir a qualquer
+  nome. Imprime deitado, sem suporte.
+- `chaveiro_bagevet_medalha-logo.stl` — a logo inteira numa peça só: chapa de
+  0,9 mm que entra na cava (fica rente à face) mais 1,0 mm de relevo por cima.
+  Também imprime deitada, chapa no leito, sem suporte.
+
+Encaixe conferido na malha: **0,15 mm de folga lateral** por lado e **0,1 mm no
+fundo** da cava, para a cola. A medalha e a cava têm um recorte em volta do furo
+da argola, de modo que sobram 1,05 mm de material maciço entre o furo e a cava.
+
+Uma observação sobre o visual: a medalha é uma chapa inteira, então toda a área
+da logo (Ø 34,5 mm) fica na cor dela, com o anel externo do disco na cor do
+corpo. Não é o mesmo efeito da arte de referência, onde só as patinhas e as
+letras são brancas sobre a face verde — esse efeito só sai imprimindo as duas
+cores juntas (o conjunto de 4 partes acima). Abrir uma cava com a silhueta exata
+da logo não é viável nesta escala: as paredes entre as cavas dos dedinhos
+ficariam com 0,16 mm, e as letras soltas teriam de ser encaixadas uma a uma.
+
 ## Impressão
 
 - **Orientação**: deitado, com a frente para cima e o furo apontando para trás
@@ -109,6 +141,8 @@ imprime deitado sem nenhum suporte, com 4,5 mm de espessura total.
 | Nome do verso | letras de 8,0 mm de altura |
 | Patinha do verso | 8,0 mm de largura, acima do nome |
 | Casca colorida do verso (2 cores) | 0,60 mm |
+| Cava da logo (logo aplicada) | Ø 34,80 mm, 1,00 mm de profundidade |
+| Medalha da logo | Ø 34,50 mm, 1,90 mm de altura (0,90 mm na cava + 1,00 mm de relevo) |
 | Espessura total | 4,50 mm (2 cores) · 5,50 mm (1 cor, relevo nos dois lados) |
 | Malhas | todas fechadas (manifold), com volume positivo |
 
@@ -125,8 +159,11 @@ imprime deitado sem nenhum suporte, com 4,5 mm de espessura total.
 | `altura_nome`, `nome_y`, `pata_verso` | composição do verso |
 | `fonte` | fonte do texto (`"Liberation Sans:style=Bold"` por padrão) |
 | `casca_verso` | espessura da casca de outra cor no verso (0 = peça de uma cor) |
-| `modo_verso` | `"relevo"` ou `"baixo"` (quando não há casca) |
-| `parte` | `"completo"`, `"corpo"`, `"casca"`, `"logo"` ou `"nome"` |
+| `modo_verso` | `"relevo"`, `"baixo"` ou `"liso"` (quando não há casca) |
+| `cava_logo` | `true` abre a cava na frente e transforma a logo em medalha |
+| `cava_profundidade`, `cava_folga`, `cava_folga_z` | profundidade e folgas do encaixe |
+| `medalha_margem`, `medalha_parede` | sobra da chapa e material junto ao furo |
+| `parte` | `"completo"`, `"corpo"`, `"casca"`, `"logo"`, `"nome"` ou `"medalha"` |
 
 Para manter a peça com 3,5 mm de espessura **total** (como na referência
 impressa), use `espessura = 1.5` com `relevo = 1.0`.

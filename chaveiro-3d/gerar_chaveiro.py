@@ -194,9 +194,13 @@ def limpar(nome: str) -> str:
 # --------------------------------------------------------------------------- #
 #  Preview colorido: monta um .scad temporario que inclui o modelo
 # --------------------------------------------------------------------------- #
-def preview(destino: Path, slug: str, defs: dict[str, object], duas_cores: bool) -> None:
+def preview(destino: Path, slug: str, defs: dict[str, object],
+            duas_cores: bool, pecas_cava: bool = False) -> None:
     # render() por parte: sem ele o preview do OpenSCAD pinta tudo de uma cor so
-    if duas_cores:
+    if pecas_cava:
+        pecas = (f'color("{COR1}") render() parte_corpo();\n'
+                 f'color("{COR2}") render() parte_medalha();')
+    elif duas_cores:
         pecas = "\n".join(
             f'color("{COR1 if cor == 1 else COR2}") render() parte_{p}();'
             for p, cor, _ in PARTES_2CORES)
@@ -227,8 +231,11 @@ def gerar(nome: str, args, par: dict[str, float], fonte: Fonte, destino: Path) -
     raio_util = par["diametro"] / 2 - MARGEM_BORDA
     raio_logo = par["logo_diametro"] / 2 - par["pata_coroa"] * 0.95 - MARGEM_COROA
 
-    esc_nome, larg_nome, *_ = ajustar(
-        fonte, nome, par["altura_nome"], par["nome_y"], raio_util)
+    if nome is None:                       # corpo-base sem nome no verso
+        esc_nome, larg_nome = 1.0, 0.0
+    else:
+        esc_nome, larg_nome, *_ = ajustar(
+            fonte, nome, par["altura_nome"], par["nome_y"], raio_util)
     esc_logo, larg_logo, *_ = ajustar(
         fonte, "BageVet", par["altura_logo"], par["logo_y"], raio_logo)
     esc_sub, larg_sub, *_ = ajustar(
@@ -237,24 +244,42 @@ def gerar(nome: str, args, par: dict[str, float], fonte: Fonte, destino: Path) -
 
     duas_cores = args.cores == 2
     casca = args.casca if duas_cores else 0.0
+    if args.cava:
+        casca = 0.0
     base: dict[str, object] = {
-        "nome": nome,
+        "nome": nome or "",
         "escala_x_nome": esc_nome,
         "escala_x_logo": esc_logo,
         "escala_x_sub": esc_sub,
         "casca_verso": casca,
-        "modo_verso": args.verso,
+        "modo_verso": "liso" if nome is None else args.verso,
+        "cava_logo": "true" if args.cava else "false",
     }
 
-    total = par["espessura"] + par["relevo"] * (
-        1 if (casca > 0 or args.verso == "baixo") else 2)
-    print(f"\n'{nome}'  ->  letras de {par['altura_nome']:.1f} mm, "
-          f"{larg_nome:.1f} mm de largura, condensacao {esc_nome:.3f}"
-          f"{' (natural)' if esc_nome == 1 else ' (ajustada ao disco)'}"
-          f" | espessura total {total:.1f} mm")
+    if nome is None:
+        print("\ncorpo-base (verso liso, serve a qualquer nome)")
+    else:
+        total = par["espessura"] + par["relevo"] * (
+            1 if (casca > 0 or args.verso == "baixo" or args.cava) else 2)
+        print(f"\n'{nome}'  ->  letras de {par['altura_nome']:.1f} mm, "
+              f"{larg_nome:.1f} mm de largura, condensacao {esc_nome:.3f}"
+              f"{' (natural)' if esc_nome == 1 else ' (ajustada ao disco)'}"
+              f" | espessura total {total:.1f} mm")
 
-    slug = limpar(nome)
-    if duas_cores:
+    slug = limpar(nome) if nome else "BASE"
+    if args.cava:
+        alvo = (destino / "chaveiro_bagevet_corpo-base-cava.stl" if nome is None
+                else destino / f"chaveiro_bagevet_{slug}_corpo-cava.stl")
+        rodar_openscad(alvo, SCAD, {**base, "parte": "corpo"})
+        validar(alvo)
+        medalha = destino / "chaveiro_bagevet_medalha-logo.stl"
+        if not medalha.exists() or not _CACHE_LOGO.get("medalha"):
+            rodar_openscad(medalha, SCAD, {**base, "parte": "medalha"})
+            validar(medalha)
+            _CACHE_LOGO["medalha"] = medalha
+        else:
+            print(f"   {medalha.name}: ja gerada (a logo nao muda)")
+    elif duas_cores:
         for parte, _cor, sufixo in PARTES_2CORES:
             caminho = destino / f"chaveiro_bagevet_{slug}_{sufixo}.stl"
             # o relevo da frente e igual em todo pet: gera uma vez e copia
@@ -273,7 +298,7 @@ def gerar(nome: str, args, par: dict[str, float], fonte: Fonte, destino: Path) -
         validar(caminho)
 
     if args.preview:
-        preview(destino, slug, base, duas_cores)
+        preview(destino, slug, base, duas_cores, args.cava)
 
 
 def main() -> None:
@@ -282,6 +307,9 @@ def main() -> None:
                     help="nome do pet (pode repetir a opcao)")
     ap.add_argument("--nomes", help="varios nomes separados por virgula")
     ap.add_argument("--lista", help="arquivo texto com um nome por linha")
+    ap.add_argument("--cava", action="store_true",
+                    help="corpo-base com cava na frente + medalha da logo "
+                         "impressa em separado (verso liso, serve a qualquer nome)")
     ap.add_argument("--cores", type=int, choices=[1, 2], default=1,
                     help="1 = peca unica; 2 = conjunto de partes para MMU/AMS")
     ap.add_argument("--casca", type=float, default=0.6,
@@ -297,7 +325,10 @@ def main() -> None:
         nomes += [n.strip() for n in args.nomes.split(",")]
     if args.lista:
         nomes += [l.strip() for l in Path(args.lista).read_text(encoding="utf-8").splitlines()]
-    nomes = [n for n in nomes if n] or ["BOLINHA"]
+    nomes = [n for n in nomes if n]
+    if not nomes:
+        # com --cava e sem nome, gera o corpo-base liso (serve a qualquer pet)
+        nomes = [None] if args.cava else ["BOLINHA"]
 
     par = ler_parametros(SCAD)
     fonte = Fonte(FONTE_TTF)
