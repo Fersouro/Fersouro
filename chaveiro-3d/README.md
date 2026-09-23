@@ -86,6 +86,38 @@ Sem impressora multimaterial dá para usar os mesmos arquivos com **troca manual
 de filamento**: a casca do verso e o nome ocupam os 0,6 mm iniciais e a marca da
 frente começa em 3,5 mm de altura.
 
+## Conjunto aplicado — como nas fotos de referência (recomendado)
+
+Duas peças, cada uma num **STL único**, cada uma impressa em **duas cores por
+troca de filamento** (sem multipartes, sem 3MF):
+
+| Peça | O que é | Troca de filamento |
+| --- | --- | --- |
+| `<NOME>_corpo.stl` | disco branco Ø50 × 3,6 mm, cava na frente, nome do pet em cursiva + patinha em relevo no verso | **z = 3,60 mm** → verde |
+| `placa-patinhas.stl` | placa verde Ø34,5 × 0,8 mm com 8 patinhas em relevo | **z = 0,80 mm** → branco |
+
+```bash
+python3 gerar_chaveiro.py --aplicado --nome "Luna"
+python3 gerar_chaveiro.py --aplicado --nomes "THOR,MEL,FRED"
+```
+
+Os dois arquivos já saem na posição de impressão, apoiados em z = 0. No slicer
+basta adicionar uma troca de filamento na altura indicada (clique com o direito
+na régua de camadas → *Adicionar troca de filamento*).
+
+- **Corpo**: 23 camadas, 3,87 cm³, ~28 min (bico 0,4 mm, camada 0,2 mm). Ele
+  imprime com o **verso para cima**, então o nome sai em relevo perfeito. A cava
+  fica virada para a mesa e o slicer faz o teto dela em ponte (vão de 34,8 mm) —
+  essa superfície fica escondida sob a placa. Se quiser o fundo liso, ligue
+  suporte só na plataforma.
+- **Placa**: 9 camadas, 0,86 cm³, ~10 min.
+- **Encaixe conferido**: 0,15 mm de folga lateral por lado e 0,20 mm no fundo
+  (espaço para a cola). Montada, a placa fica rente e as patinhas sobressaem
+  1,0 mm, como na foto.
+- **Fonte do nome**: `Z003` (cursiva). É a mais próxima da foto entre as
+  disponíveis aqui; para usar outra, instale a fonte e troque `fonte_nome` no
+  `.scad`.
+
 ## Peças aplicadas (cava nos dois lados)
 
 O corpo vira uma peça universal, impressa uma vez e usada sempre; a logo e o

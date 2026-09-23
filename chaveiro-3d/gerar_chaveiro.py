@@ -26,11 +26,22 @@ import tempfile
 import unicodedata
 from pathlib import Path
 
+from fontTools.pens.boundsPen import BoundsPen
 from fontTools.ttLib import TTFont
 
 AQUI = Path(__file__).resolve().parent
 SCAD = AQUI / "chaveiro_bagevet.scad"
 FONTE_TTF = Path("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf")
+# Cursiva do nome do pet (a mais proxima da foto de referencia disponivel aqui)
+FONTE_NOME_TTF = Path("/usr/share/fonts/opentype/urw-base35/Z003-MediumItalic.otf")
+# Conjunto "aplicado": corpo branco com o nome em relevo + placa verde de patinhas
+APLICADO = {
+    "cava_logo": "true", "modo_verso": "relevo", "casca_verso": 0.0,
+    "nome_y": -1.0, "pata_verso_y": -13.0, "pata_verso": 12.0,
+    "medalha_parede": 0.9,
+}
+APLICADO_PLACA = {"logo_so_patas": "true", "pata_coroa": 6.5,
+                  "raio_coroa_manual": 12.5}
 # Folga entre qualquer relevo e a borda externa do disco.
 MARGEM_BORDA = 2.5
 # Folga entre o texto da marca e a coroa de patinhas.
@@ -75,7 +86,7 @@ class Fonte:
         self.upm = self.tt["head"].unitsPerEm
         self.cmap = self.tt.getBestCmap()
         self.hmtx = self.tt["hmtx"]
-        self.glyf = self.tt["glyf"] if "glyf" in self.tt else None
+        self.glyphset = self.tt.getGlyphSet()   # serve para TrueType e CFF
 
     def _nome_glifo(self, ch: str) -> str:
         cp = ord(ch)
@@ -95,12 +106,14 @@ class Fonte:
         for ch in texto:
             g = self._nome_glifo(ch)
             avanco = self.hmtx[g][0]
-            gl = self.glyf[g] if self.glyf else None
-            if gl is not None and gl.numberOfContours != 0:
-                x0 = min(x0, pen + gl.xMin)
-                x1 = max(x1, pen + gl.xMax)
-                y0 = min(y0, gl.yMin)
-                y1 = max(y1, gl.yMax)
+            caneta = BoundsPen(self.glyphset)
+            self.glyphset[g].draw(caneta)
+            if caneta.bounds:
+                gx0, gy0, gx1, gy1 = caneta.bounds
+                x0 = min(x0, pen + gx0)
+                x1 = max(x1, pen + gx1)
+                y0 = min(y0, gy0)
+                y1 = max(y1, gy1)
             pen += avanco * espacamento
         if x0 is math.inf:
             raise SystemExit("[erro] o nome nao tem nenhum caractere visivel.")
@@ -187,6 +200,20 @@ def validar(stl: Path, rotulo: str = "") -> None:
           f"{'malha fechada OK' if ok else 'PROBLEMA NA MALHA'}")
     if not ok:
         raise SystemExit(f"[erro] malha nao-manifold em {stl.name}")
+
+
+def deitar_para_impressao(stl: Path, girar: bool = True) -> None:
+    """Deixa a peca na posicao de impressao: centrada e apoiada em z = 0. Com
+    girar=True vira 180 graus em Y (nome em relevo para cima, cava para a mesa)."""
+    import numpy as np
+    import trimesh
+    m = trimesh.load(stl)
+    if girar:
+        m.apply_transform(trimesh.transformations.rotation_matrix(np.pi, [0, 1, 0]))
+    m.apply_translation([-m.bounds[0][0] - m.extents[0] / 2,
+                         -m.bounds[0][1] - m.extents[1] / 2,
+                         -m.bounds[0][2]])
+    m.export(stl)
 
 
 def limpar(nome: str) -> str:
@@ -294,13 +321,18 @@ def preview(destino: Path, slug: str, defs: dict[str, object],
 
 
 # --------------------------------------------------------------------------- #
-def gerar(nome: str, args, par: dict[str, float], fonte: Fonte, destino: Path) -> None:
+def gerar(nome: str, args, par: dict[str, float], fonte: Fonte, destino: Path,
+          fonte_nome: "Fonte | None" = None) -> None:
     raio_util = (par["plaquinha_diam"] / 2 - MARGEM_PLAQUINHA if args.cava_verso
                  else par["diametro"] / 2 - MARGEM_BORDA)
     raio_logo = par["logo_diametro"] / 2 - par["pata_coroa"] * 0.95 - MARGEM_COROA
 
     if nome is None:                       # corpo-base sem nome no verso
         esc_nome, larg_nome = 1.0, 0.0
+    elif args.aplicado:                    # nome em cursiva, mais abaixo no disco
+        esc_nome, larg_nome, *_ = ajustar(
+            fonte_nome or fonte, nome, par["altura_nome"], APLICADO["nome_y"],
+            raio_util, engrossa=par["engrossar_nome"])
     else:
         esc_nome, larg_nome, *_ = ajustar(
             fonte, nome, par["altura_nome"], par["nome_y"], raio_util)
@@ -322,6 +354,7 @@ def gerar(nome: str, args, par: dict[str, float], fonte: Fonte, destino: Path) -
         "casca_verso": casca,
         "modo_verso": ("liso" if (nome is None or args.cava_verso)
                        else args.verso),
+        "engrossar_nome": par["engrossar_nome"],
         "cava_logo": "true" if args.cava else "false",
         "cava_verso": "true" if args.cava_verso else "false",
     }
@@ -339,7 +372,21 @@ def gerar(nome: str, args, par: dict[str, float], fonte: Fonte, destino: Path) -
               f" | espessura total {total:.1f} mm")
 
     slug = limpar(nome) if nome else "BASE"
-    if args.cava:
+    if args.aplicado:
+        corpo = destino / f"chaveiro_bagevet_{slug}_corpo.stl"
+        rodar_openscad(corpo, SCAD, {**base, **APLICADO, "parte": "corpo"})
+        deitar_para_impressao(corpo)   # verso (nome) para cima, cava para baixo
+        validar(corpo)
+        placa = destino / "chaveiro_bagevet_placa-patinhas.stl"
+        if _CACHE_LOGO.get("placa"):
+            print(f"   {placa.name}: ja gerada (a placa nao muda)")
+        else:
+            rodar_openscad(placa, SCAD,
+                           {**base, **APLICADO, **APLICADO_PLACA, "parte": "medalha"})
+            deitar_para_impressao(placa, girar=False)   # patinhas ja ficam para cima
+            validar(placa)
+            _CACHE_LOGO["placa"] = placa
+    elif args.cava:
         # com cava nos dois lados o corpo e universal, entao sai uma vez so
         if args.cava_verso:
             corpo = destino / "chaveiro_bagevet_corpo-base-2cavas.stl"
@@ -406,6 +453,9 @@ def main() -> None:
                     help="nome do pet (pode repetir a opcao)")
     ap.add_argument("--nomes", help="varios nomes separados por virgula")
     ap.add_argument("--lista", help="arquivo texto com um nome por linha")
+    ap.add_argument("--aplicado", action="store_true",
+                    help="corpo branco (cava na frente, nome em cursiva e patinha "
+                         "em relevo no verso) + placa verde de patinhas")
     ap.add_argument("--cava-verso", dest="cava_verso", action="store_true",
                     help="cava nos DOIS lados: corpo universal + medalha da logo "
                          "+ uma plaquinha por nome (implica --cava)")
@@ -437,8 +487,9 @@ def main() -> None:
     par = ler_parametros(SCAD)
     fonte = Fonte(FONTE_TTF)
     destino = Path(args.saida)
+    fonte_nome = Fonte(FONTE_NOME_TTF) if FONTE_NOME_TTF.exists() else None
     for nome in nomes:
-        gerar(nome, args, par, fonte, destino)
+        gerar(nome, args, par, fonte, destino, fonte_nome)
     print(f"\nConcluido: {len(nomes)} chaveiro(s) em {destino}")
 
 

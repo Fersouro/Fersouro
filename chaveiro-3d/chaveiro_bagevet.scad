@@ -37,6 +37,7 @@ logo_diametro     = 34.0;   // diametro total da marca
 n_patas           = 8;      // patinhas da coroa
 coroa_giro        = 22.5;   // giro da coroa (evita patinha embaixo do furo)
 pata_coroa        = 4.2;    // largura de cada patinha da coroa
+raio_coroa_manual = 0;      // 0 = automatico; >0 fixa o raio da coroa
 altura_logo       = 4.0;    // altura das letras de "BageVet"
 logo_y            = 1.0;    // linha de base de "BageVet"
 altura_sub        = 1.8;    // altura das letras do subtitulo
@@ -77,6 +78,11 @@ plaquinha_diam    = 45.0;   // diametro da plaquinha do nome
 
 /* [Fonte e qualidade] ---------------------------------------------------- */
 fonte             = "Liberation Sans:style=Bold";
+// Fonte do nome do pet. Z003 e a cursiva da foto de referencia.
+fonte_nome        = "Z003:style=Medium Italic";
+engrossar_nome    = 0.12;   // engrossa a cursiva (traco imprimivel)
+// true = a marca da frente e so a coroa de patinhas, sem os textos
+logo_so_patas     = false;
 resolucao         = 180;    // segmentos do disco
 renderizar_peca   = true;   // false so para montagens coloridas externas
 
@@ -84,7 +90,8 @@ renderizar_peca   = true;   // false so para montagens coloridas externas
 R            = diametro / 2;
 furo_r       = furo_diametro / 2;
 furo_y       = R - furo_margem - furo_r;   // centro do furo
-raio_coroa   = logo_diametro/2 - pata_coroa * 0.51;
+raio_coroa   = raio_coroa_manual > 0 ? raio_coroa_manual
+                                    : logo_diametro/2 - pata_coroa * 0.51;
 verso_plano  = casca_verso > 0;            // nome embutido na casca
 eps          = 0.01;
 // Na peca unica os relevos entram 0.01 mm no corpo (evita faces coplanares na
@@ -109,12 +116,13 @@ module pata2d(tam = 5) {
 // -----------------------------------------------------------------------------
 //  Texto ajustado: altura da mancha grafica = alt, condensado por esc_x
 // -----------------------------------------------------------------------------
-module texto_fit(txt, alt, esc_x = 1, espaco = 1, engrossa = 0) {
+module texto_fit(txt, alt, esc_x = 1, espaco = 1, engrossa = 0, fnt = "") {
     offset(r = engrossa)
         scale([esc_x, 1])
             resize([0, alt], auto = true)
-                text(txt, size = 10, font = fonte, spacing = espaco,
-                     halign = "center", valign = "baseline", $fn = 32);
+                text(txt, size = 10, font = (fnt == "" ? fonte : fnt),
+                     spacing = espaco, halign = "center", valign = "baseline",
+                     $fn = 32);
 }
 
 // -----------------------------------------------------------------------------
@@ -124,13 +132,16 @@ module frente2d() {
     for (i = [0 : n_patas - 1])
         rotate(coroa_giro + i * 360 / n_patas)
             translate([0, raio_coroa]) pata2d(pata_coroa);
-    translate([0, logo_y]) texto_fit(texto_logo, altura_logo, escala_x_logo);
-    translate([0, sub_y])  texto_fit(texto_subtitulo, altura_sub, escala_x_sub,
-                                     espacamento_sub, engrossar_sub);
+    if (!logo_so_patas) {
+        translate([0, logo_y]) texto_fit(texto_logo, altura_logo, escala_x_logo);
+        translate([0, sub_y])  texto_fit(texto_subtitulo, altura_sub, escala_x_sub,
+                                         espacamento_sub, engrossar_sub);
+    }
 }
 
 module verso2d() {
-    translate([0, nome_y])       texto_fit(nome, altura_nome, escala_x_nome);
+    translate([0, nome_y])
+        texto_fit(nome, altura_nome, escala_x_nome, 1, engrossar_nome, fonte_nome);
     translate([0, pata_verso_y]) pata2d(pata_verso);
 }
 
