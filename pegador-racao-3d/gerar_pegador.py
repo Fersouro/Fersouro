@@ -107,10 +107,18 @@ def escrever_3mf(destino: Path, pecas: list[tuple[str, str, object]], desloc) ->
         linhas.append('   </mesh>')
         linhas.append('  </object>')
 
+    # objeto montado: as partes entram como componentes de um unico objeto, entao
+    # o fatiador abre como "um objeto com varias partes" (cada uma com sua cor)
+    conjunto = len(pecas) + 2
+    linhas.append(f'  <object id="{conjunto}" type="model" name="montado">')
+    linhas.append('   <components>')
+    for i in range(len(pecas)):
+        linhas.append(f'    <component objectid="{i + 2}"/>')
+    linhas.append('   </components>')
+    linhas.append('  </object>')
     linhas.append(' </resources>')
     linhas.append(' <build>')
-    for i in range(len(pecas)):
-        linhas.append(f'  <item objectid="{i + 2}"/>')
+    linhas.append(f'  <item objectid="{conjunto}"/>')
     linhas.append(' </build>')
     linhas.append('</model>')
 

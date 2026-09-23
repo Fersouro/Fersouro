@@ -20,6 +20,7 @@ import os
 import re
 import shutil
 import subprocess
+import zipfile
 import sys
 import tempfile
 import unicodedata
@@ -194,6 +195,67 @@ def limpar(nome: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
+#  3MF colorido: zip com o modelo em XML, uma cor por objeto.
+#  (mesma rotina usada em pegador-racao-3d/gerar_pegador.py)
+# --------------------------------------------------------------------------- #
+CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+ <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+ <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
+</Types>
+"""
+
+RELS = """<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+ <Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>
+</Relationships>
+"""
+
+
+def escrever_3mf(destino: Path, pecas, desloc) -> None:
+    """pecas = [(nome, cor, malha trimesh)], todas no mesmo referencial."""
+    l = ['<?xml version="1.0" encoding="UTF-8"?>',
+         '<model unit="millimeter" xml:lang="en-US" '
+         'xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">',
+         ' <resources>', '  <basematerials id="1">']
+    for nome, cor, _ in pecas:
+        l.append(f'   <base name="{nome}" displaycolor="{cor}"/>')
+    l.append('  </basematerials>')
+    for i, (nome, _cor, malha) in enumerate(pecas):
+        l.append(f'  <object id="{i + 2}" type="model" pid="1" pindex="{i}" name="{nome}">')
+        l.append('   <mesh>')
+        l.append('    <vertices>')
+        for v in malha.vertices + desloc:
+            l.append(f'     <vertex x="{v[0]:.6f}" y="{v[1]:.6f}" z="{v[2]:.6f}"/>')
+        l.append('    </vertices>')
+        l.append('    <triangles>')
+        for t in malha.faces:
+            l.append(f'     <triangle v1="{t[0]}" v2="{t[1]}" v3="{t[2]}"/>')
+        l.append('    </triangles>')
+        l.append('   </mesh>')
+        l.append('  </object>')
+    # objeto montado: as partes entram como componentes de um unico objeto, entao
+    # o fatiador abre como "um objeto com varias partes" (cada uma com sua cor)
+    conjunto = len(pecas) + 2
+    l.append(f'  <object id="{conjunto}" type="model" name="montado">')
+    l.append('   <components>')
+    for i in range(len(pecas)):
+        l.append(f'    <component objectid="{i + 2}"/>')
+    l.append('   </components>')
+    l.append('  </object>')
+    l.append(' </resources>')
+    l.append(' <build>')
+    l.append(f'  <item objectid="{conjunto}"/>')
+    l.append(' </build>')
+    l.append('</model>')
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(destino, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", CONTENT_TYPES)
+        z.writestr("_rels/.rels", RELS)
+        z.writestr("3D/3dmodel.model", "\n".join(l))
+
+
+# --------------------------------------------------------------------------- #
 #  Preview colorido: monta um .scad temporario que inclui o modelo
 # --------------------------------------------------------------------------- #
 def preview(destino: Path, slug: str, defs: dict[str, object],
@@ -306,17 +368,28 @@ def gerar(nome: str, args, par: dict[str, float], fonte: Fonte, destino: Path) -
             rodar_openscad(plaq, SCAD, {**base, "parte": "plaquinha"})
             validar(plaq)
     elif duas_cores:
+        gerados = []
         for parte, _cor, sufixo in PARTES_2CORES:
             caminho = destino / f"chaveiro_bagevet_{slug}_{sufixo}.stl"
             # o relevo da frente e igual em todo pet: gera uma vez e copia
             if parte == "logo" and _CACHE_LOGO.get("arquivo"):
                 shutil.copyfile(_CACHE_LOGO["arquivo"], caminho)
                 print(f"   {caminho.name}: copiado do primeiro (a frente nao muda)")
-                continue
-            rodar_openscad(caminho, SCAD, {**base, "parte": parte})
-            validar(caminho)
-            if parte == "logo":
-                _CACHE_LOGO["arquivo"] = caminho
+            else:
+                rodar_openscad(caminho, SCAD, {**base, "parte": parte})
+                validar(caminho)
+                if parte == "logo":
+                    _CACHE_LOGO["arquivo"] = caminho
+            gerados.append((sufixo, COR1 if _cor == 1 else COR2, caminho))
+
+        # arquivo unico, ja colorido, para imprimir de uma vez na AMS/MMU
+        import trimesh
+        malhas = [(n, c, trimesh.load(p)) for n, c, p in gerados]
+        juntas = trimesh.util.concatenate([m for _, _, m in malhas])
+        tresmf = destino / f"chaveiro_bagevet_{slug}_colorido.3mf"
+        escrever_3mf(tresmf, malhas, -juntas.bounds[0])
+        print(f"   {tresmf.name}: {len(malhas)} partes coloridas, "
+              f"{tresmf.stat().st_size/1024:.0f} KB")
     else:
         sufixo = "" if args.verso == "relevo" else "_verso_baixo"
         caminho = destino / f"chaveiro_bagevet_{slug}{sufixo}.stl"

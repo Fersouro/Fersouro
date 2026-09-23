@@ -25,6 +25,7 @@ lote a partir de uma lista de pets.
 | `stl/chaveiro_bagevet_BOLINHA_cor1-nome.stl` | **2 cores** — nome do pet (cor 1, verde) |
 | `stl/chaveiro_bagevet_BOLINHA_cor2-casca.stl` | **2 cores** — face do verso (cor 2, branco) |
 | `stl/chaveiro_bagevet_BOLINHA_cor2-logo.stl` | **2 cores** — marca da frente (cor 2, branco) |
+| `stl/chaveiro_bagevet_BOLINHA_colorido.3mf` | **2 cores num arquivo só** — as 4 partes como um objeto multipartes, cores já atribuídas (AMS/MMU) |
 | `stl/chaveiro_bagevet_LUNA_*.stl` | segundo exemplo, mesmo conjunto |
 | `stl/chaveiro_bagevet_BOLINHA.stl` | **1 cor** — peça única, alto-relevo nos dois lados |
 | `stl/chaveiro_bagevet_LUNA.stl` | **1 cor** — peça única, alto-relevo nos dois lados |
@@ -58,6 +59,10 @@ Sem Python dá para editar direto o `.scad`: a primeira linha do bloco
 `[Personalizacao]` é `nome = "BOLINHA";`. Nesse caminho, confira nomes longos —
 o ajuste automático de largura é feito pelo script.
 
+O 3MF colorido sai junto com `--cores 2`. STL não guarda cor nem nada de
+fatiamento (bico, camada e suporte são escolhas do fatiador) — por isso o
+arquivo colorido é 3MF.
+
 Requisitos: `openscad` e `python3 -m pip install fonttools trimesh`
 (`trimesh` só na validação; `xvfb` só para gerar os PNGs num servidor).
 
@@ -67,9 +72,10 @@ As quatro partes ficam no mesmo sistema de coordenadas e se encaixam sem folga
 nem sobreposição (conferido: a soma dos volumes bate exatamente com a peça
 montada). Carregue as quatro como **um objeto com várias partes**:
 
-- **Bambu Studio / Orca**: importe os 4 STLs de uma vez e responda **Sim** em
-  "carregar como objeto único com várias partes"; depois atribua o filamento de
-  cada parte na lista de objetos.
+- **Bambu Studio / Orca**: abra o `_colorido.3mf` — ele já vem como um objeto
+  com as quatro partes e as cores atribuídas; basta apontar cada parte para o
+  filamento da AMS. (Alternativa: importar os 4 STLs de uma vez e responder
+  **Sim** em "carregar como objeto único com várias partes".)
 - **PrusaSlicer**: carregue `cor1-corpo`, clique com o direito no objeto →
   *Adicionar parte → Carregar parte* para os outros três; atribua a extrusora de
   cada um.
