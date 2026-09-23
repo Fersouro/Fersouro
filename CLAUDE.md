@@ -25,5 +25,10 @@ destaques, definidas em YAML (`datalake/conf/reports/*.yml`) e geradas ao fim de
 cada carga. **Antes de mexer nos relatórios, leia
 `datalake/docs/relatorios.md`.**
 
+## RPA do Portal Rede VW
+
+Robô Playwright que faz login no portalredevw.com.br e entra num usuário
+específico. **Antes de mexer, leia `datalake/docs/rpa-portal-vw.md`.**
+
 Roda no servidor da empresa em `C:\datalake`. Não é preciso "transferir" nada
 entre sessões: o contexto está no código e nessa documentação.

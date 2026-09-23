@@ -115,6 +115,19 @@ foreach ($atalho in @("DIAGNOSTICO-PAGINA.bat", "CADASTRAR-USUARIO.bat")) {
 # diagnostico da pagina: responde "quem atende na porta" quando o login recusa
 $dia = (Get-ChildItem $App -Recurse -Filter "diagnostico_pagina.py" | Select-Object -First 1).FullName
 if ($dia) { Copy-Item $dia (Join-Path $LakeRoot "diagnostico_pagina.py") -Force; Ok "diagnostico_pagina.py atualizado" }
+# RPA do Portal Rede VW: script e atalhos sempre atualizados; o YAML dos
+# seletores so na primeira vez -- depois e do operador, que ajusta la.
+$rpa = (Get-ChildItem $App -Recurse -Filter "rpa_portal_vw.py" | Select-Object -First 1).FullName
+if ($rpa) { Copy-Item $rpa (Join-Path $LakeRoot "rpa_portal_vw.py") -Force; Ok "rpa_portal_vw.py atualizado" }
+foreach ($atalho in @("RPA-PORTAL-VW.bat", "GRAVAR-PORTAL-VW.bat")) {
+    $achado = (Get-ChildItem $App -Recurse -Filter $atalho | Select-Object -First 1).FullName
+    if ($achado) { Copy-Item $achado (Join-Path $LakeRoot $atalho) -Force; Ok "$atalho atualizado" }
+}
+$rpaCfg = Join-Path $LakeRoot "rpa_portal_vw.yml"
+if (-not (Test-Path $rpaCfg)) {
+    $achado = (Get-ChildItem $App -Recurse -Filter "portal_vw.yml" | Select-Object -First 1).FullName
+    if ($achado) { Copy-Item $achado $rpaCfg; Ok "rpa_portal_vw.yml criado (ajuste os seletores la)" }
+}
 # o proprio instalador, para rodar de novo facil no futuro
 $eu = (Get-ChildItem $App -Recurse -Filter "instalar_app.ps1" | Select-Object -First 1).FullName
 if ($eu) { Copy-Item $eu (Join-Path $LakeRoot "instalar_app.ps1") -Force; Ok "instalar_app.ps1 disponivel em $LakeRoot" }
