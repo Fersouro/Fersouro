@@ -36,11 +36,12 @@ FONTE_TTF = Path("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf")
 FONTE_NOME_TTF = Path("/usr/share/fonts/opentype/urw-base35/Z003-MediumItalic.otf")
 # Conjunto "aplicado": corpo branco com o nome em relevo + placa verde de patinhas
 APLICADO = {
-    "cava_logo": "true", "modo_verso": "relevo", "casca_verso": 0.0,
+    "cava_logo": True, "modo_verso": "relevo", "casca_verso": 0.0,
+    "nome_embutido": True,        # verso plano: apoia inteiro na mesa
     "nome_y": -1.0, "pata_verso_y": -13.0, "pata_verso": 12.0,
     "medalha_parede": 0.9,
 }
-APLICADO_PLACA = {"logo_so_patas": "true", "pata_coroa": 6.5,
+APLICADO_PLACA = {"logo_so_patas": True, "pata_coroa": 6.5,
                   "raio_coroa_manual": 12.5}
 # Folga entre qualquer relevo e a borda externa do disco.
 MARGEM_BORDA = 2.5
@@ -156,6 +157,17 @@ def ajustar(fonte: Fonte, texto: str, altura: float, base_y: float,
 # --------------------------------------------------------------------------- #
 #  OpenSCAD + validacao
 # --------------------------------------------------------------------------- #
+def _literal_scad(valor):
+    """Converte o valor para a sintaxe do OpenSCAD. Booleano TEM de sair sem
+    aspas: em OpenSCAD qualquer texto nao vazio e verdadeiro, entao "false"
+    passado como texto valeria como true."""
+    if isinstance(valor, bool):
+        return "true" if valor else "false"
+    if isinstance(valor, str):
+        return f'"{valor}"'
+    return valor
+
+
 def executavel() -> str:
     exe = shutil.which("openscad") or shutil.which("openscad-nogui")
     if not exe:
@@ -174,8 +186,7 @@ def rodar_openscad(saida: Path, fonte_scad: Path, defs: dict[str, object],
         if xvfb:
             cmd = [xvfb, "-a", "-s", "-screen 0 1024x1024x24"] + cmd
     for chave, valor in defs.items():
-        literal = f'"{valor}"' if isinstance(valor, str) else valor
-        cmd += ["-D", f"{chave}={literal}"]
+        cmd += ["-D", f"{chave}={_literal_scad(valor)}"]
     cmd.append(str(fonte_scad))
     saida.parent.mkdir(parents=True, exist_ok=True)
     proc = subprocess.run(cmd, capture_output=True, text=True)
@@ -200,6 +211,31 @@ def validar(stl: Path, rotulo: str = "") -> None:
           f"{'malha fechada OK' if ok else 'PROBLEMA NA MALHA'}")
     if not ok:
         raise SystemExit(f"[erro] malha nao-manifold em {stl.name}")
+
+
+def juntar_partes(saida: Path, defs: dict, partes: list[str]) -> None:
+    """Exporta cada parte e junta num STL unico com os solidos separados: o
+    slicer abre como 'um objeto com varias partes' e cada uma recebe uma cor."""
+    import tempfile
+    import trimesh
+    malhas = []
+    for parte in partes:
+        with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as fh:
+            tmp = Path(fh.name)
+        rodar_openscad(tmp, SCAD, {**defs, "parte": parte})
+        m = trimesh.load(tmp)
+        if not m.is_watertight:
+            raise SystemExit(f"[erro] parte '{parte}' saiu com malha aberta.")
+        malhas.append((parte, m))
+        tmp.unlink(missing_ok=True)
+    junta = trimesh.util.concatenate([m for _, m in malhas])
+    junta.apply_translation([0, 0, -junta.bounds[0][2]])    # apoiada em z = 0
+    saida.parent.mkdir(parents=True, exist_ok=True)
+    junta.export(saida)
+    detalhe = " + ".join(f"{n} ({m.body_count})" for n, m in malhas)
+    print(f"   {saida.name}: {detalhe} = "
+          f"{trimesh.load(saida).body_count} solidos separados | "
+          f"{junta.extents[0]:.2f} x {junta.extents[1]:.2f} x {junta.extents[2]:.2f} mm")
 
 
 def deitar_para_impressao(stl: Path, girar: bool = True) -> None:
@@ -291,7 +327,7 @@ def preview(destino: Path, slug: str, defs: dict[str, object],
     if pecas_cava:
         linhas = [f'color("{COR1}") render() parte_corpo();',
                   f'color("{COR2}") render() parte_medalha();']
-        if defs.get("cava_verso") == "true" and defs.get("nome"):
+        if defs.get("cava_verso") is True and defs.get("nome"):
             linhas.append(f'color("{COR2}") render() parte_plaquinha();')
         pecas = "\n".join(linhas)
     elif duas_cores:
@@ -300,9 +336,7 @@ def preview(destino: Path, slug: str, defs: dict[str, object],
             for p, cor, _ in PARTES_2CORES)
     else:
         pecas = f'color("{COR1}") render() parte_completa();'
-    def literal(v):
-        return '"%s"' % v if isinstance(v, str) else v
-    atribs = "\n".join(f"{k} = {literal(v)};" for k, v in defs.items())
+    atribs = "\n".join(f"{k} = {_literal_scad(v)};" for k, v in defs.items())
     wrapper = (f'include <{SCAD}>\nrenderizar_peca = false;\n{atribs}\n{pecas}\n')
     with tempfile.NamedTemporaryFile("w", suffix=".scad", delete=False,
                                      encoding="utf-8") as fh:
@@ -329,13 +363,13 @@ def gerar(nome: str, args, par: dict[str, float], fonte: Fonte, destino: Path,
 
     if nome is None:                       # corpo-base sem nome no verso
         esc_nome, larg_nome = 1.0, 0.0
-    elif args.aplicado:                    # nome em cursiva, mais abaixo no disco
-        esc_nome, larg_nome, *_ = ajustar(
-            fonte_nome or fonte, nome, par["altura_nome"], APLICADO["nome_y"],
-            raio_util, engrossa=par["engrossar_nome"])
     else:
+        # o nome e sempre desenhado na cursiva (fonte_nome no .scad), entao a
+        # medicao tem de usar a mesma fonte em qualquer modo
         esc_nome, larg_nome, *_ = ajustar(
-            fonte, nome, par["altura_nome"], par["nome_y"], raio_util)
+            fonte_nome or fonte, nome, par["altura_nome"],
+            APLICADO["nome_y"] if args.aplicado else par["nome_y"],
+            raio_util, engrossa=par["engrossar_nome"])
     esc_logo, larg_logo, *_ = ajustar(
         fonte, "BageVet", par["altura_logo"], par["logo_y"], raio_logo)
     esc_sub, larg_sub, *_ = ajustar(
@@ -355,8 +389,8 @@ def gerar(nome: str, args, par: dict[str, float], fonte: Fonte, destino: Path,
         "modo_verso": ("liso" if (nome is None or args.cava_verso)
                        else args.verso),
         "engrossar_nome": par["engrossar_nome"],
-        "cava_logo": "true" if args.cava else "false",
-        "cava_verso": "true" if args.cava_verso else "false",
+        "cava_logo": bool(args.cava),
+        "cava_verso": bool(args.cava_verso),
     }
 
     if nome is None:
@@ -374,16 +408,16 @@ def gerar(nome: str, args, par: dict[str, float], fonte: Fonte, destino: Path,
     slug = limpar(nome) if nome else "BASE"
     if args.aplicado:
         corpo = destino / f"chaveiro_bagevet_{slug}_corpo.stl"
-        rodar_openscad(corpo, SCAD, {**base, **APLICADO, "parte": "corpo"})
-        deitar_para_impressao(corpo)   # verso (nome) para cima, cava para baixo
-        validar(corpo)
+        juntar_partes(corpo, {**base, **APLICADO}, ["corpo", "nome"])
         placa = destino / "chaveiro_bagevet_placa-patinhas.stl"
         if _CACHE_LOGO.get("placa"):
             print(f"   {placa.name}: ja gerada (a placa nao muda)")
         else:
+            # a placa e um corte horizontal limpo (chapa verde embaixo, patinhas
+            # brancas em cima): sai melhor como peca unica com troca por altura
             rodar_openscad(placa, SCAD,
                            {**base, **APLICADO, **APLICADO_PLACA, "parte": "medalha"})
-            deitar_para_impressao(placa, girar=False)   # patinhas ja ficam para cima
+            deitar_para_impressao(placa, girar=False)
             validar(placa)
             _CACHE_LOGO["placa"] = placa
     elif args.cava:

@@ -88,33 +88,48 @@ frente começa em 3,5 mm de altura.
 
 ## Conjunto aplicado — como nas fotos de referência (recomendado)
 
-Duas peças, cada uma num **STL único**, cada uma impressa em **duas cores por
-troca de filamento** (sem multipartes, sem 3MF):
+Duas peças, cada uma num **STL único**:
 
-| Peça | O que é | Troca de filamento |
+| Peça | O que é | Cores no slicer |
 | --- | --- | --- |
-| `<NOME>_corpo.stl` | disco branco Ø50 × 3,6 mm, cava na frente, nome do pet em cursiva + patinha em relevo no verso | **z = 3,60 mm** → verde |
-| `placa-patinhas.stl` | placa verde Ø34,5 × 0,8 mm com 8 patinhas em relevo | **z = 0,80 mm** → branco |
+| `<NOME>_corpo.stl` | disco branco Ø50 × 3,6 mm, cava na frente, nome do pet em cursiva + patinha no verso | **multipartes**: 1 sólido do corpo + 9 do nome/patinha |
+| `placa-patinhas.stl` | placa verde Ø34,5 × 0,8 mm com 8 patinhas em relevo | **troca de filamento em z = 0,80 mm** |
 
 ```bash
 python3 gerar_chaveiro.py --aplicado --nome "Luna"
 python3 gerar_chaveiro.py --aplicado --nomes "THOR,MEL,FRED"
 ```
 
-Os dois arquivos já saem na posição de impressão, apoiados em z = 0. No slicer
-basta adicionar uma troca de filamento na altura indicada (clique com o direito
-na régua de camadas → *Adicionar troca de filamento*).
+### Como abrir o corpo no slicer
 
-- **Corpo**: 23 camadas, 3,87 cm³, ~28 min (bico 0,4 mm, camada 0,2 mm). Ele
-  imprime com o **verso para cima**, então o nome sai em relevo perfeito. A cava
-  fica virada para a mesa e o slicer faz o teto dela em ponte (vão de 34,8 mm) —
-  essa superfície fica escondida sob a placa. Se quiser o fundo liso, ligue
-  suporte só na plataforma.
-- **Placa**: 9 camadas, 0,86 cm³, ~10 min.
-- **Encaixe conferido**: 0,15 mm de folga lateral por lado e 0,20 mm no fundo
-  (espaço para a cola). Montada, a placa fica rente e as patinhas sobressaem
-  1,0 mm, como na foto.
-- **Fonte do nome**: `Z003` (cursiva). É a mais próxima da foto entre as
+1. Arraste o `<NOME>_corpo.stl` para o Bambu Studio (ou Orca).
+2. Ele pergunta se o arquivo, que tem vários sólidos, deve ser carregado como
+   **um objeto com várias partes** — responda **Sim**.
+3. Na lista do objeto aparecem 10 partes: a primeira é o corpo, as outras nove
+   são o nome e a patinha. Selecione da segunda à última (clique na segunda,
+   shift + clique na última) e atribua o filamento da cor do nome.
+
+O nome ocupa os **0,6 mm iniciais** (3 camadas) rente à face do verso, e não é
+um vão aberto: o corpo é um sólido inteiro e as peças do nome ficam dentro dele,
+prevalecendo na cor. Por isso a peça apoia inteira na mesa, sem região
+flutuante e sem suporte.
+
+### Impressão (conferido fatiando)
+
+| Peça | Camadas | Material | Tempo | Avisos |
+| --- | --- | --- | --- | --- |
+| corpo | 18 | 3,78 cm³ | ~28 min | nenhum |
+| placa | 9 | 0,86 cm³ | ~10 min | nenhum |
+
+Bico 0,4 mm, camada 0,2 mm, 3 paredes, 20 % de preenchimento. As duas peças
+saem do arquivo já apoiadas em z = 0, na posição certa: o corpo com a **cava
+para cima** e a placa com as **patinhas para cima**.
+
+- **Encaixe**: 0,15 mm de folga lateral por lado e 0,20 mm no fundo (cola).
+  Montada, a placa fica rente à face e as patinhas sobressaem 1,0 mm.
+- **Borda**: arredondada na face de cima e com chanfro de 45° na face que apoia
+  na mesa, para a primeira camada não ter balanço.
+- **Fonte do nome**: `Z003` (cursiva), a mais próxima da foto entre as
   disponíveis aqui; para usar outra, instale a fonte e troque `fonte_nome` no
   `.scad`.
 

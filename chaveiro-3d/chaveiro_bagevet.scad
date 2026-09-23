@@ -25,7 +25,8 @@ escala_x_sub      = 1.0;
 /* [Geometria do disco] --------------------------------------------------- */
 diametro          = 50.0;   // diametro externo
 espessura         = 3.6;    // espessura do disco (18 camadas de 0,2 mm)
-raio_borda        = 1.0;    // arredondamento da borda externa (chanfro)
+raio_borda        = 1.0;    // arredondamento da borda externa (face de cima)
+chanfro_base      = 0.8;    // chanfro a 45 graus na borda que apoia na mesa
 relevo            = 1.0;    // altura do relevo positivo (>= 0.8 p/ legibilidade)
 
 /* [Furo da argola] ------------------------------------------------------- */
@@ -59,6 +60,14 @@ casca_verso       = 0;
 // Verso quando NAO ha casca: "relevo" (alto-relevo), "baixo" (gravado) ou
 // "liso" (sem nada - corpo-base que serve para varios nomes)
 modo_verso        = "relevo";
+// true = nome e patinha EMBUTIDOS, rentes a face do verso, como PARTE separada
+// sobreposta ao corpo. O verso fica plano (a peca apoia inteira na mesa, sem
+// regiao flutuante) e o nome aparece pela cor da parte no slicer.
+nome_embutido     = false;
+inlay_prof        = 0.6;    // profundidade do embutido (3 camadas de 0,2 mm)
+// Sobreposicao do embutido sobre o encaixe. Sem ela as duas pecas ficariam com
+// faces exatamente coincidentes e o slicer as funde num solido so.
+inlay_folga       = 0.01;
 // "completo" = peca inteira | "corpo" | "casca" | "logo" | "nome" | "medalha"
 parte             = "completo";
 
@@ -153,14 +162,16 @@ module verso2d_espelhado() { mirror([1, 0, 0]) verso2d(); }
 //  Solidos elementares
 // -----------------------------------------------------------------------------
 // Corpo do disco com borda arredondada (perfil convexo -> solido fechado)
+// Borda de cima arredondada (conforto) e borda de baixo em chanfro de 45 graus:
+// a face que apoia na mesa fica sem balanco, entao imprime sem ponte nem aviso.
 module disco() {
     rotate_extrude($fn = resolucao)
         hull() {
             translate([0, -espessura/2]) square([eps, espessura]);
-            translate([R - raio_borda,  espessura/2 - raio_borda])
+            translate([R - raio_borda, espessura/2 - raio_borda])
                 circle(r = raio_borda, $fn = 32);
-            translate([R - raio_borda, -espessura/2 + raio_borda])
-                circle(r = raio_borda, $fn = 32);
+            translate([R - chanfro_base, -espessura/2]) square([eps, eps]);
+            translate([R - eps, -espessura/2 + chanfro_base]) square([eps, eps]);
         }
 }
 
@@ -212,10 +223,13 @@ module cava_verso_solida() {
 }
 
 // Nome do verso: embutido rente a face (com casca) ou em alto-relevo (sem casca)
-module nome_solido() {
+module nome_solido(folga = 0) {
     if (verso_plano)
         translate([0, 0, -espessura/2])
             linear_extrude(casca_verso) verso2d_espelhado();
+    else if (nome_embutido)
+        translate([0, 0, -espessura/2])
+            linear_extrude(inlay_prof) verso2d_espelhado();
     else
         translate([0, 0, -espessura/2 - relevo])
             linear_extrude(relevo + sobrepor) verso2d_espelhado();
@@ -257,10 +271,13 @@ module corpo_solido() {
     difference() {
         union() {
             disco();
-            if (!verso_plano && modo_verso == "relevo") nome_solido();
+            if (!verso_plano && !nome_embutido && modo_verso == "relevo")
+                nome_solido();
         }
         if (!verso_plano && modo_verso == "baixo") nome_cavidade();
         if (verso_plano) { fatia_casca(); nome_solido(); }
+        // com nome_embutido o corpo fica inteiro; o nome e uma PARTE que ocupa
+        // o mesmo volume, rente a face do verso, e prevalece no slicer.
         if (cava_logo)    cava_solida();
         if (cava_verso)   cava_verso_solida();
     }
@@ -271,9 +288,23 @@ module corpo_solido() {
 // -----------------------------------------------------------------------------
 module parte_corpo()    { difference() { corpo_solido(); furo(); } }
 module parte_logo()     { difference() { logo_solido();  furo(); } }
-module parte_nome()     { difference() { nome_solido();  furo(); } }
+module parte_nome()     { difference() { nome_solido(inlay_folga); furo(); } }
 module parte_casca()    { difference() { casca_solida(); nome_solido(); furo(); } }
 module parte_medalha()  { difference() { medalha();      furo(); } }
+// Placa em duas pecas, para escolher a cor de cada uma no slicer
+module parte_placa_chapa() {
+    difference() {
+        translate([0, 0, espessura/2 - cava_profundidade + cava_folga_z])
+            linear_extrude(cava_profundidade - cava_folga_z) contorno_medalha2d(0);
+        furo();
+    }
+}
+module parte_placa_relevo() {
+    difference() {
+        translate([0, 0, espessura/2 - eps]) linear_extrude(relevo + eps) frente2d();
+        furo();
+    }
+}
 module parte_plaquinha(){ difference() { plaquinha();    furo(); } }
 module parte_completa() {
     difference() {
@@ -294,6 +325,8 @@ module chaveiro() {
     else if (parte == "casca") parte_casca();
     else if (parte == "medalha") parte_medalha();
     else if (parte == "plaquinha") parte_plaquinha();
+    else if (parte == "placa_chapa")  parte_placa_chapa();
+    else if (parte == "placa_relevo") parte_placa_relevo();
     else                       parte_completa();
 }
 
