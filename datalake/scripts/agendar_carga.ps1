@@ -8,10 +8,10 @@
 
   Uso (PowerShell como Administrador):
     powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\agendar_carga.ps1
-    ... -Inicio 06:00 -Horas 16        # janela maior
-    ... -IntervaloMinutos 30           # de meia em meia hora
-    ... -DiaTodo                       # 24 horas por dia
-    ... -Remover                       # desfaz o agendamento
+    powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\agendar_carga.ps1 -Inicio 06:00 -Horas 16        # janela maior
+    powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\agendar_carga.ps1 -IntervaloMinutos 30           # de meia em meia hora
+    powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\agendar_carga.ps1 -DiaTodo                       # 24 horas por dia
+    powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\agendar_carga.ps1 -Remover                       # desfaz o agendamento
 
   Duas protecoes importantes:
 

@@ -18,7 +18,7 @@
   Uso:
     powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\instalar_app.ps1
     # versao exata por commit:
-    powershell ... -File C:\datalake\instalar_app.ps1 -Ref c9d9b5b
+    powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\instalar_app.ps1 -Ref c9d9b5b
 #>
 param(
     [string]$Ref = "claude/datalake-from-scratch-jkv3wq",

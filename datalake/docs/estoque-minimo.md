@@ -203,9 +203,9 @@ Duplo-clique (como Administrador) em `C:\datalake\AGENDAR-CARGA.bat`, ou:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\agendar_carga.ps1 -IntervaloMinutos 30
-powershell ... -File C:\datalake\agendar_carga.ps1 -Inicio 06:00 -Horas 16
-powershell ... -File C:\datalake\agendar_carga.ps1 -DiaTodo      # 24 h
-powershell ... -File C:\datalake\agendar_carga.ps1 -Remover      # desfaz
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\agendar_carga.ps1 -Inicio 06:00 -Horas 16
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\agendar_carga.ps1 -DiaTodo      # 24 h
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\agendar_carga.ps1 -Remover      # desfaz
 ```
 
 Duas proteções embutidas, que importam num intervalo curto:

@@ -12,11 +12,11 @@
 
   Uso (PowerShell como Administrador):
     powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\instalar_servidor.ps1
-    ... -Escuta 192.168.78.6            # so nessa placa de rede
-    ... -Porta 8443 -PortaAntiga 8080   # padrao: HTTPS na 8443, 8080 redireciona
-    ... -Usuario fernando               # cadastra quem pode entrar (pede a senha)
-    ... -Http                           # sem TLS, como era antes
-    ... -SemLogin                        # servir sem senha (nao recomendado)
+    powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\instalar_servidor.ps1 -Escuta 192.168.78.6            # so nessa placa de rede
+    powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\instalar_servidor.ps1 -Porta 8443 -PortaAntiga 8080   # padrao: HTTPS na 8443, 8080 redireciona
+    powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\instalar_servidor.ps1 -Usuario fernando               # cadastra quem pode entrar (pede a senha)
+    powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\instalar_servidor.ps1 -Http                           # sem TLS, como era antes
+    powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\instalar_servidor.ps1 -SemLogin                        # servir sem senha (nao recomendado)
 
   O acesso pede usuario e senha (a pasta export tem margem e faturamento). O
   primeiro usuario e cadastrado aqui; os demais, com:
