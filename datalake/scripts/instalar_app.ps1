@@ -108,13 +108,15 @@ $isv = (Get-ChildItem $App -Recurse -Filter "instalar_servidor.ps1" | Select-Obj
 if ($isv) { Copy-Item $isv (Join-Path $LakeRoot "instalar_servidor.ps1") -Force; Ok "instalar_servidor.ps1 atualizado" }
 # atalhos de duplo-clique: no PowerShell o comando com aspas vira texto, e o
 # .bat tira essa armadilha do caminho de quem so quer cadastrar um usuario.
-foreach ($atalho in @("DIAGNOSTICO-PAGINA.bat", "CADASTRAR-USUARIO.bat")) {
+foreach ($atalho in @("DIAGNOSTICO-PAGINA.bat", "CADASTRAR-USUARIO.bat", "AGENDAR-CARGA.bat")) {
     $achado = (Get-ChildItem $App -Recurse -Filter $atalho | Select-Object -First 1).FullName
     if ($achado) { Copy-Item $achado (Join-Path $LakeRoot $atalho) -Force; Ok "$atalho atualizado" }
 }
 # diagnostico da pagina: responde "quem atende na porta" quando o login recusa
-$dia = (Get-ChildItem $App -Recurse -Filter "diagnostico_pagina.py" | Select-Object -First 1).FullName
-if ($dia) { Copy-Item $dia (Join-Path $LakeRoot "diagnostico_pagina.py") -Force; Ok "diagnostico_pagina.py atualizado" }
+foreach ($apoio in @("diagnostico_pagina.py", "agendar_carga.ps1")) {
+    $achado = (Get-ChildItem $App -Recurse -Filter $apoio | Select-Object -First 1).FullName
+    if ($achado) { Copy-Item $achado (Join-Path $LakeRoot $apoio) -Force; Ok "$apoio atualizado" }
+}
 # RPA do Portal Rede VW: script e atalhos sempre atualizados; o YAML dos
 # seletores so na primeira vez -- depois e do operador, que ajusta la.
 $rpa = (Get-ChildItem $App -Recurse -Filter "rpa_portal_vw.py" | Select-Object -First 1).FullName
@@ -135,7 +137,7 @@ if ($eu) { Copy-Item $eu (Join-Path $LakeRoot "instalar_app.ps1") -Force; Ok "in
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Green
 Write-Host "  Codigo instalado em $App." -ForegroundColor Green
-Write-Host "  As cargas 6x/dia (ATUALIZAR.bat) usam esse projeto, sem baixar de novo." -ForegroundColor Green
+Write-Host "  As cargas automaticas (ATUALIZAR.bat) usam esse projeto, sem baixar de novo." -ForegroundColor Green
 Write-Host "  Pagina: $(Join-Path $LakeRoot 'export\estoque_minimo.html')" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Proximo passo -- publicar na rede (PowerShell como Administrador):" -ForegroundColor Green

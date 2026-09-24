@@ -11,7 +11,7 @@ Python + DuckDB + Parquet, fonte Oracle Linx). Todo o projeto vive em
 
 Sistema que compara o disponível real das peças (do ERP, via datalake) com uma
 lista de mínimos e publica numa página local + planilha, com histórico diário e
-atualização 6×/dia.
+atualização de hora em hora.
 
 **Antes de mexer no Estoque Mínimo, leia `datalake/docs/estoque-minimo.md`** —
 cobre a fonte do número, arquitetura, a lista de mínimos, a página, o servidor,

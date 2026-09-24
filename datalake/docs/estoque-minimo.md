@@ -186,14 +186,37 @@ schtasks /Run /TN DatalakeEstoquePagina
 
 ---
 
-## 6. Automação (6×/dia)
+## 6. Automação (de hora em hora)
 
-- **6 Tarefas Agendadas** chamam `C:\datalake\ATUALIZAR.bat` (7:00, 10:00,
-  12:00, 15:00, 17:50, 18:37).
+- **Uma Tarefa Agendada** — `DatalakeAtualizar` — chama
+  `C:\datalake\ATUALIZAR.bat` a cada hora, das **07:00 às 20:00**, todos os
+  dias. Ela substituiu as 6 tarefas de horário fixo (7:00, 10:00, 12:00, 15:00,
+  17:50, 18:37): uma tarefa só é mais fácil de conferir, e o intervalo muda num
+  lugar único.
 - `ATUALIZAR.bat` usa o **projeto fixo** `C:\datalake\app` (NÃO baixa nada a
   cada run — evita o cache do GitHub entregar código velho), roda a carga com
   `--keep-going` (uma tabela com falha não trava o resto) e **sempre** regenera
-  a página.
+  a página e os relatórios.
+
+### Mudar o intervalo ou a janela
+Duplo-clique (como Administrador) em `C:\datalake\AGENDAR-CARGA.bat`, ou:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\datalake\agendar_carga.ps1 -IntervaloMinutos 30
+powershell ... -File C:\datalake\agendar_carga.ps1 -Inicio 06:00 -Horas 16
+powershell ... -File C:\datalake\agendar_carga.ps1 -DiaTodo      # 24 h
+powershell ... -File C:\datalake\agendar_carga.ps1 -Remover      # desfaz
+```
+
+Duas proteções embutidas, que importam num intervalo curto:
+
+- **Carga em andamento não é atropelada.** Se uma carga passar de uma hora, a
+  seguinte é descartada (`MultipleInstances IgnoreNew`) — duas cargas
+  simultâneas disputariam o mesmo lake.
+- **Máquina desligada não perde a carga.** Ao voltar, ela roda
+  (`StartWhenAvailable`) em vez de simplesmente não acontecer.
+
+Conferir: `schtasks /Query /TN DatalakeAtualizar /V /FO LIST`
 
 ---
 
@@ -275,7 +298,8 @@ No repositório (`datalake/`):
 - `scripts/instalar_servidor.ps1` — registra o servidor como Tarefa Agendada.
 - `scripts/instalar_app.ps1` — instala/atualiza o código no projeto fixo.
 - `scripts/setup_windows.ps1` — driver da carga (`-Run -KeepGoing`, `-Estoque`).
-- `scripts/ATUALIZAR-DATALAKE.bat` — a rotina 6×/dia (vira `C:\datalake\ATUALIZAR.bat`).
+- `scripts/ATUALIZAR-DATALAKE.bat` — a rotina horária (vira `C:\datalake\ATUALIZAR.bat`).
+- `scripts/agendar_carga.ps1` e `AGENDAR-CARGA.bat` — criam/ajustam o agendamento.
 
 No servidor (`C:\datalake`):
 - `lake.duckdb` — catálogo. `silver/`, `gold/`, `export/` — dados e saídas.
