@@ -30,5 +30,12 @@ cada carga. **Antes de mexer nos relatórios, leia
 Robô Playwright que faz login no portalredevw.com.br e entra num usuário
 específico. **Antes de mexer, leia `datalake/docs/rpa-portal-vw.md`.**
 
+## RPA SAGA2 - VH47 (Garantia VW → planilha)
+
+Navega no portal até a Lista de arquivos do SAGA2 - VH47, baixa só os PDFs
+ainda não processados, extrai SG e valor total e faz upsert numa planilha
+existente (`src/datalake/rpa/`, `conf/rpa/saga_vh47.yml`). **Antes de mexer,
+leia `datalake/docs/saga-vh47.md`.**
+
 Roda no servidor da empresa em `C:\datalake`. Não é preciso "transferir" nada
 entre sessões: o contexto está no código e nessa documentação.

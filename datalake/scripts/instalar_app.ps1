@@ -119,7 +119,7 @@ if ($dia) { Copy-Item $dia (Join-Path $LakeRoot "diagnostico_pagina.py") -Force;
 # seletores so na primeira vez -- depois e do operador, que ajusta la.
 $rpa = (Get-ChildItem $App -Recurse -Filter "rpa_portal_vw.py" | Select-Object -First 1).FullName
 if ($rpa) { Copy-Item $rpa (Join-Path $LakeRoot "rpa_portal_vw.py") -Force; Ok "rpa_portal_vw.py atualizado" }
-foreach ($atalho in @("RPA-PORTAL-VW.bat", "GRAVAR-PORTAL-VW.bat")) {
+foreach ($atalho in @("RPA-PORTAL-VW.bat", "GRAVAR-PORTAL-VW.bat", "SAGA-VH47.bat")) {
     $achado = (Get-ChildItem $App -Recurse -Filter $atalho | Select-Object -First 1).FullName
     if ($achado) { Copy-Item $achado (Join-Path $LakeRoot $atalho) -Force; Ok "$atalho atualizado" }
 }

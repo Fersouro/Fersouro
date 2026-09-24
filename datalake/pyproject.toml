@@ -20,6 +20,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-cov>=5.0"]
+# RPA de portal (SAGA2 - VH47): navegador + leitura de PDF. Instalado sob
+# demanda pelo SAGA-VH47.bat -- as cargas do datalake nao precisam disto.
+rpa = ["playwright>=1.40", "pypdf>=4.0"]
 
 [project.scripts]
 datalake = "datalake.cli:main"
