@@ -48,9 +48,16 @@ def test_formatar_brl():
 @pytest.mark.parametrize("valor,esperado", [
     (123456, "123456"), ("123456", "123456"), ("000123456", "123456"),
     (" 123.456 ", "123456"), (123456.0, "123456"), (None, ""), ("AB12", "ab12"),
+    ("212.646A", "212646A"), ("212646a", "212646A"), ("211.827A", "211827A"),
 ])
 def test_chave_numerica(valor, esperado):
     assert chave_numerica(valor) == esperado
 def test_mojibake():
     from datalake.rpa.valores import normalizar_texto
     assert normalizar_texto("MÃªs") == "mes" and normalizar_texto("Mês") == "mes"
+
+
+def test_os_com_A_e_outra_identificacao():
+    """Regra de negocio: 123456A e relancamento, nao a mesma chave de 123456."""
+    assert chave_numerica("212646A") != chave_numerica(212646)
+    assert chave_numerica("212.646A") == chave_numerica("212646A")

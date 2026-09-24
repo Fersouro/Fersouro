@@ -181,9 +181,10 @@ def _converter(regra: RegraCampo, bruto: str) -> Any:
         return dt.datetime.strptime(bruto, "%d/%m/%Y").date()
     if regra.tipo == "documento":
         chave = chave_numerica(bruto)
-        if not chave.isdigit():
+        # digitos + sufixo de relancamento opcional ("123456A": regra de negocio)
+        if not re.fullmatch(r"\d+[A-Z]{0,2}", chave):
             raise ValorInvalido(f"documento com letras: {bruto!r}")
-        n = len(chave)
+        n = len(chave.rstrip("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
         if regra.min_digitos and n < int(regra.min_digitos):
             raise ValorInvalido(f"{bruto!r} tem {n} digitos (minimo {regra.min_digitos})")
         if regra.max_digitos and n > int(regra.max_digitos):

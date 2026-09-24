@@ -57,7 +57,7 @@ extracao:
             - '\bsg\s*n[º°o.]*'
             - 'solicitacao\s+de\s+garantia'
             - '\bsg\b'
-          padrao: '\d{4,12}'
+          padrao: '\d{4,12}[a-z]?(?![a-z])'   # "123456A" = relancamento (regra de negocio)
           obrigatorio: true
         valor_total:
           tipo: dinheiro

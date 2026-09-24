@@ -108,17 +108,26 @@ def formatar_brl(valor: Decimal | float) -> str:
 
 
 def chave_numerica(valor) -> str:
-    """Chave de comparacao para numeros de documento (SG, NF).
+    """Chave de COMPARACAO para numeros de documento (SG, O.S., NF).
 
     123456, "123456", "000123456", " 123.456 ", 123456.0 -> "123456".
-    Texto com letras fica como esta (normalizado), para nao casar errado.
+
+    Regra de negocio (docs/saga-vh47.md): O.S. com letra no fim, como
+    "123456A", e um RELANCAMENTO manual da mesma O.S. para o SAGA nao barrar
+    como duplicata -- identificacao valida e DIFERENTE de "123456". A letra
+    fica na chave: "212.646A" e "212646a" -> "212646A" (mesmo registro,
+    escrito com ou sem ponto de milhar), mas nunca casa com "212646".
+    Isto e so para comparar: o valor gravado na planilha nao e alterado.
     """
     if valor is None:
         return ""
     if isinstance(valor, float) and valor.is_integer():
         valor = int(valor)
     texto = str(valor).strip()
-    so_digitos = re.sub(r"[\s.\-/]", "", texto)
-    if so_digitos.isdigit():
-        return so_digitos.lstrip("0") or "0"
+    compacto = re.sub(r"[\s.\-/]", "", texto)
+    if compacto.isdigit():
+        return compacto.lstrip("0") or "0"
+    m = re.fullmatch(r"(\d+)([A-Za-z]{1,2})", compacto)
+    if m:  # O.S. com sufixo de relancamento
+        return (m.group(1).lstrip("0") or "0") + m.group(2).upper()
     return normalizar_texto(texto)

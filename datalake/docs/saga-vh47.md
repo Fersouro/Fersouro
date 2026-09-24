@@ -148,6 +148,64 @@ processo escrevendo, e as cargas de 6×/dia seguram esse arquivo.
 Não precisa mexer no código. Se um relatório tiver outro formato, crie mais um
 item em `layouts` com `identificar: '<texto que só esse formato tem>'`.
 
+## Regras de negócio confirmadas
+
+### O.S. com letra no fim ("123456A") — relançamento manual
+
+Definida pelo negócio em 24/09/2026.
+
+- `123456A` **não** é erro de leitura nem uma O.S. nova do sistema. É a
+  **mesma O.S. de origem relançada à mão** depois de um problema na cobrança.
+  O "A" existe para o SAGA não barrar o relançamento como duplicata.
+- A automação **preserva exatamente** a identificação: não remove o "A" e não
+  converte `123456A` em `123456`.
+- **Duplicidade:** `123456` e `123456A` são identificações **diferentes**.
+  Nunca tratar uma como duplicata da outra.
+  - Na comparação (`valores.chave_numerica`), só o ponto de milhar e os
+    espaços são ignorados: `212.646A` casa com `212646A`, mas nunca com
+    `212646`.
+  - A extração do PDF aceita o sufixo.
+- **Na dúvida sobre uma O.S. com "A":** tratar como válida, registrar no log e
+  perguntar. Nunca inferir que ela é inválida.
+- **Na planilha:** o único caso visto está gravado como **texto com ponto de
+  milhar**, `212.646A` (5º Fechamento de Julho 2026). As O.S. numéricas são
+  números com formato `#,##0`, que o Excel mostra como `212.646`.
+  - **Pendente:** como o SAGA escreve essa O.S. no PDF, e se a automação deve
+    gravar `212646A` ou `212.646A`.
+
+## Fechamentos no Drive (análise de 24/09/2026)
+
+Veja a análise completa na conversa do projeto. Pontos que o código precisa
+respeitar:
+
+- **Formato:** os arquivos são **.xls (Excel 97-2003)** e têm de continuar
+  `.xls`. O openpyxl (`planilha.py`) **não** serve para eles.
+- **Ferramenta de edição:** a escolhida é o **Apache POI (Java)**.
+  - Nos testes, só as células gravadas e os resultados de fórmula mudaram.
+    Abrir e salvar os 13 fechamentos de jul–set/2026 deu **0 diferenças**.
+  - O LibreOffice regrava a formatação (datas, larguras, estilos).
+  - O xlutils transforma as fórmulas em números fixos.
+- **Estrutura da planilha:** uma aba, "Quinzena".
+  - Linha 1: `Nº Fechamento | Mês de AAAA | Matriz`.
+  - Linha 2: cabeçalho `Nº OS | Nº NF P. | Nº NF S. | DATA EMISSÃO |
+    VAL. NF. SERV. | VAL. NF. PEÇA | VALOR CRÉDITO | DIFERENÇA`.
+  - Seções com linhas pré-formatadas e fórmula de DIFERENÇA: principal
+    (linhas 3–136), REVISÕES, RECONSIDERAÇÃO DE GARANTIAS e LOCAÇÕES, cada
+    uma com sua linha TOTAL, mais o TOTAL GERAL.
+- **Estilo:** o das linhas vazias do meio de cada seção é **igual** ao das
+  linhas lançadas à mão. Preencher uma linha vazia mantém o padrão.
+- **A mesma O.S. em mais de um fechamento é normal.** Há 45 casos de
+  pagamento em partes, com observações como "Diferença deverá ser quitada no
+  próximo fechamento". A regra anti-duplicidade vale **dentro de cada
+  fechamento**, não na pasta inteira.
+- **Ainda não comprovado:**
+  - se 1 relatório SAGA corresponde a 1 fechamento (a hipótese vem da
+    contagem de 4 a 5 por mês);
+  - qual seção cada SG ocupa;
+  - se VALOR CRÉDITO é o "valor total da SG".
+
+  Tudo isso depende dos PDFs reais.
+
 ## Solução de problemas
 
 | Sintoma | Causa provável / o que fazer |

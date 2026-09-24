@@ -111,3 +111,8 @@ def test_validar_pdf_detecta_incompleto_e_html(tmp_path):
     vazio.write_bytes(b"")
     with pytest.raises(ErroExtracao):
         validar_pdf(vazio)
+
+
+def test_sg_com_sufixo_A_preservada(tmp_path, layouts):
+    pdf = pdf_sg(tmp_path / "a.pdf", "212646A", "R$ 10,00")
+    assert extrair_pdf(pdf, layouts).registros[0]["sg"] == "212646A"
