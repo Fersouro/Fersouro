@@ -1,0 +1,4 @@
+# geometria derivada do modelo de terceiros: nao vai para o repositorio
+*.3mf
+*.stl
+saida/
