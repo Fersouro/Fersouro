@@ -37,5 +37,12 @@ ainda não processados, extrai SG e valor total e faz upsert numa planilha
 existente (`src/datalake/rpa/`, `conf/rpa/saga_vh47.yml`). **Antes de mexer,
 leia `datalake/docs/saga-vh47.md`.**
 
+**Auxiliar de Fechamento da Garantia:** antes de qualquer nova integração
+(portal, Drive, e-mail, outros sistemas VW), leia
+`datalake/docs/auxiliar-fechamento-mapa.md`. Ele traz o mapa de fontes,
+acessos, credenciais e riscos, que precisa de validação do responsável. A
+regra permanente é: leitura antes de escrita, evidência para cada dado e
+INCONCLUSIVO em vez de suposição.
+
 Roda no servidor da empresa em `C:\datalake`. Não é preciso "transferir" nada
 entre sessões: o contexto está no código e nessa documentação.
