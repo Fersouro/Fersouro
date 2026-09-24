@@ -173,6 +173,58 @@ Definida pelo negócio em 24/09/2026.
   - **Pendente:** como o SAGA escreve essa O.S. no PDF, e se a automação deve
     gravar `212646A` ou `212.646A`.
 
+## O PDF VH47 real (analisado em 24/09/2026)
+
+Arquivo de referência: `2026-09-22.001079_RELATORIO_VH47 (2).pdf`, na pasta do
+Drive `2026/Mês 09 - Setembro`.
+
+- **Nome do arquivo:** `AAAA-MM-DD.<DN com 6 dígitos>_RELATORIO_VH47.pdf`.
+- **Formato:** 11 páginas em paisagem, geradas pelo iText. O texto é
+  extraível (não é imagem).
+- **Título:** "RELACAO DOS CREDITOS PROCESSADOS - VH47A".
+- **Cabeçalho de cada página:**
+  - `PERIODO: 21.09.2026 A 22.09.2026`
+  - `DN: 001079-TTERRASUL…`
+  - `FR: 0,9429` (significado **desconhecido**; vale 0,0000 em algumas páginas)
+  - `NUM.LANCAMENTO: 5.969.254`
+  - `DATA DO PROCESSAMENTO: 22.09.2026`
+- **Um bloco por SG**, com as colunas:
+  - `NUMERO O.S` (com "A" quando é relançamento: `214265A`, sem ponto)
+  - `SR`, `VR` (versão)
+  - `TG` (tipo), `DEF`, `FOR`, `N.IDS`
+  - `DT.VENDA`, `DT.REPAR`, `KM`, `CHASSI`
+  - `TOTAL M.OBRA`, `TOTAL MATERIAL`, **`TOTAL SG`**
+
+  Abaixo de cada bloco vêm as linhas de peça e mão de obra.
+- **Resumo na última página:** `QT.SG`, `TOTAL M.OBRA`, `TOTAL MAT`,
+  `TOTAL SGS` (CRED/DEB/TOT), mais a seção **CANCELAMENTOS**.
+- **Somas que conferem:**
+  - em todos os 44 blocos, `TOTAL M.OBRA + TOTAL MATERIAL = TOTAL SG`;
+  - a soma dos TOTAL SG = `TOTAL SGS` do resumo (14.471,50).
+
+  A extração deve **validar essas duas somas**. Se uma não bater, o resultado é
+  ERRO DE EXTRAÇÃO.
+
+### Regras de negócio sobre o PDF
+
+- **Crédito:** o **TOTAL SG** é o crédito pago naquela versão (VR). Ele vai
+  para a coluna **VALOR CRÉDITO**. Se a mesma SG voltar paga como versão 02, o
+  crédito é o valor da versão 02. (Definido pelo negócio.)
+- **Chave da SG:** a mesma O.S. pode vir com **SR 01 e SR 02** no mesmo
+  relatório (ex.: 214074, 214397). São **duas SGs** e viram duas linhas.
+  - A chave da SG é **O.S. + SR (+ VR)**, e não só a O.S.
+  - A planilha não guarda SR nem VR. Por isso o controle de duplicidade precisa
+    guardar essa chave no histórico do Auxiliar.
+- **Seção da planilha:** TG `1S1`/`1S2`/`1S3` = revisão → seção **REVISÕES**.
+  - Evidência: nos 13 fechamentos de jul–set/2026, os 33 créditos com valor
+    típico de revisão (649,71 / 754,76 / 772,71) estão todos em REVISÕES.
+  - Não se sabe ainda para onde vão os outros TG (`710`, `110` = principal?)
+    nem RECONSIDERAÇÃO e LOCAÇÕES.
+- **Relatório × fechamento:** nenhuma das 42 O.S. deste relatório (de 22/09)
+  está nos fechamentos existentes. O único vazio é o 4º de setembro, criado em
+  23/09. Isso é consistente com **1 relatório = 1 fechamento**, mas foi
+  observado **uma vez só**; confirmar com outros pares relatório × fechamento.
+
 ## Fechamentos no Drive (análise de 24/09/2026)
 
 Veja a análise completa na conversa do projeto. Pontos que o código precisa
