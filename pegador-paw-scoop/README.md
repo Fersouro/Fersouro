@@ -3,12 +3,17 @@
 Troca o nome do pet gravado no cabo do modelo *Paw Scoop* pela marca BageVet,
 sem mexer em mais nada da peça.
 
+Duas bases diferentes usam a mesma marca: o *Paw Scoop* e o *22_scoop*. Cada
+uma tem o seu par de arquivos, porque a estrutura dos dois modelos e diferente.
+
 ## O que tem aqui
 
 | Arquivo | O que faz |
 | --- | --- |
 | `logo_cabo.scad` | desenha a marca conforme a arte atual: coroa de seis patinhas + "bagévet" com a cruz + "medicina animal" alinhado à direita, 56,90 × 15,25 × 1,00 mm. Reaproveita `pata2d()` de `../chaveiro-3d/chaveiro_bagevet.scad` |
-| `trocar_nome_por_logo.py` | abre o 3MF, separa os sólidos, põe a marca no lugar do nome e exporta os arquivos prontos |
+| `trocar_nome_por_logo.py` | Paw Scoop: abre o 3MF, separa os sólidos, põe a marca no lugar do nome e exporta os arquivos prontos |
+| `logo_cabo_22.scad` | a mesma marca dimensionada para o cabo do *22_scoop* (tira plana de 18 mm): coroa Ø 13,40 mm, "bagévet" de 8,40 mm com a cruz e "medicina animal" alinhado à direita, 49,61 × 13,36 × 0,80 mm |
+| `trocar_nome_22.py` | 22_scoop: tira o nome com um booleano, repõe a pintura por face e entrega a marca como segunda peça no extrusor 2 |
 
 **A geometria do pegador não está no repositório.** A base é de terceiros
 (*Personalized Paw & Bone Pet Food Scoop*, 3D CRAFT HUB, MakerWorld, sob
@@ -33,6 +38,29 @@ Sai uma pasta `saida/` com:
   da marca e nada mais, mantendo perfis, pintura por face e posição na mesa;
 - `pegador_bagevet_leve.3mf` — o mesmo arquivo com o perfil de impressão leve já
   gravado (ver abaixo). A malha é bit a bit igual à do anterior.
+
+## O 22_scoop é outro caso
+
+Este segundo modelo é um sólido só, e as duas cores vêm de **pintura por face**,
+não de peças separadas. O nome também não era só relevo: as letras eram prismas
+de 0,8 mm sobre um plinto de mais 0,8 mm, com o miolo de cada letra cortado
+através do plinto até o cabo.
+
+Então `trocar_nome_22.py` faz outro caminho:
+
+1. tira do próprio modelo a silhueta cheia do nome (tudo que sobe acima do cabo,
+   que é plano em z = −8,2);
+2. corta fora esse volume com um booleano no OpenSCAD, deixando a tira lisa;
+3. o booleano refaz a triangulação, então a pintura é reposta copiando a cor da
+   face mais próxima na malha original — as pastilhas da concha continuam
+   brancas (2601,8 mm² antes e depois) e o cabo volta a ser todo da cor do corpo;
+4. a marca entra como **segunda peça do mesmo objeto, no extrusor 2**, com um
+   degrau de 0,8 mm — o mesmo relevo das pastilhas. Repetir o plinto de dois
+   degraus engordaria o desenho em 0,45 mm por lado e fecharia os vãos entre os
+   dedinhos e entre as letras.
+
+Aqui só o 3MF carrega o resultado completo: as pastilhas são pintura, e STL não
+carrega pintura.
 
 ## Por que dá para colorir em STL
 
