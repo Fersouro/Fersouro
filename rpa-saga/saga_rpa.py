@@ -211,17 +211,63 @@ class Portal:
             raise Falha("nao achei o campo de usuario ao lado da senha")
         fr.locator("[data-rpa-usuario='1']").first.fill(usuario)
         senha_el.fill(senha)
-        log("usuario e senha preenchidos (campo Login, v3)")
+        log("usuario e senha preenchidos (campo Login, v4)")
         antes = set(id(p) for p in self.ctx.pages)
-        senha_el.press("Enter")
-        self.seguir(self.page, antes)
+        url_antes = self.page.url
+        # Botao "ok" ao lado da senha (o Portal Rede nao envia com Enter).
+        achou_botao = fr.evaluate("""() => {
+            const vis = e => !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length);
+            const senha = [...document.querySelectorAll('input[type=password]')].find(vis);
+            if (!senha) return false;
+            const rs = senha.getBoundingClientRect();
+            const txt = e => (e.value || e.innerText || e.alt || e.title || '').trim();
+            let melhor = null, nota = 1e9;
+            for (const e of document.querySelectorAll(
+                    'input[type=submit], input[type=image], input[type=button], button, a, img[onclick]')) {
+                if (!vis(e)) continue;
+                const r = e.getBoundingClientRect();
+                let d = Math.hypot(r.left - rs.right, (r.top + r.bottom - rs.top - rs.bottom) / 2);
+                if (/^(ok|entrar|acessar|login|logar|ir)$/i.test(txt(e))) d -= 150;
+                if (d < nota) { nota = d; melhor = e; }
+            }
+            if (!melhor || nota > 250) return false;
+            melhor.setAttribute('data-rpa-ok', '1');
+            return true; }""")
+        if achou_botao:
+            fr.locator("[data-rpa-ok='1']").first.click()
+            log("clicou no botao ok do login")
+        else:
+            senha_el.press("Enter")
+            log("sem botao ok visivel: enviou com Enter")
+        # espera a tela mudar: some o campo de senha, muda a URL ou abre aba
+        fim = time.monotonic() + TIMEOUT
+        while time.monotonic() < fim:
+            self.pausa(1)
+            novas = [p for p in self.ctx.pages if id(p) not in antes and not p.is_closed()]
+            if novas:
+                self.page = novas[-1]
+                break
+            if self.page.url != url_antes or self.campo_senha()[1] is None:
+                break
+        try:
+            self.page.wait_for_load_state("domcontentloaded", timeout=15000)
+        except Exception:
+            pass
         self.pausa(2)
-        if self.campo_senha()[1] is not None:
+        if self.campo_senha()[1] is not None and self.page.url == url_antes:
             self.print("login_falhou")
-            texto = sem_acento(self.page.inner_text("body")[:3000])
-            if "captcha" in texto or "codigo" in texto or "token" in texto:
+            self.salvar_html("login_falhou")
+            texto = ""
+            for _, f in self.frames():
+                try:
+                    texto += " " + sem_acento(f.evaluate("() => document.documentElement.innerText || ''")[:3000])
+                except Exception:
+                    pass
+            if "captcha" in texto or "codigo de verificacao" in texto or "token" in texto:
                 raise Falha("o portal pediu CAPTCHA/codigo -- precisa de uma pessoa")
-            raise Falha("login nao passou (a tela de senha continua) -- veja o print em saida/")
+            if "invalid" in texto or "incorret" in texto or "bloquead" in texto:
+                raise Falha("o portal recusou o login (usuario/senha invalidos ou conta bloqueada) -- veja o print")
+            raise Falha("login nao passou (a tela nao mudou) -- veja login_falhou.png em saida/")
         log("login OK")
 
     def escolher_empresa(self) -> None:
