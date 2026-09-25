@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Cruza o PDF VH47 com a(s) planilha(s) de fechamento (.xls). SO LEITURA.
 
-    python cruzar.py                         # PDF mais novo de saida/pdfs x planilhas/*.xls
+    python cruzar.py                         # relatorio MAIS RECENTE de saida/pdfs x planilhas/*.xls
     python cruzar.py RELATORIO.pdf A.xls B.xls
 
 Para cada SG do PDF (versoes da mesma O.S. somadas) diz:
@@ -73,7 +73,9 @@ def main(argv: list[str]) -> int:
     pdfs = [Path(a) for a in argv if a.lower().endswith(".pdf")]
     xls = [Path(a) for a in argv if a.lower().endswith((".xls", ".xlsx"))]
     if not pdfs:
-        todos = sorted((SAIDA / "pdfs").glob("*.pdf"), key=lambda p: p.stat().st_mtime)
+        # o MAIS RECENTE pela data do relatorio no nome (2026-09-22...), nao pela hora do download
+        from saga_rpa import data_relatorio
+        todos = sorted((SAIDA / "pdfs").glob("*.pdf"), key=lambda p: (data_relatorio(p.name), p.stat().st_mtime))
         pdfs = todos[-1:]
     if not xls:
         xls = sorted((AQUI / "planilhas").glob("*.xls"))

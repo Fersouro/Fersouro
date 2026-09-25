@@ -4,7 +4,8 @@ RPA SAGA2 - VH47 (independente do datalake).
 
 Faz: login no Portal Rede VW -> Garantia Volkswagen -> SAGA -> SAGA2 - VH47
 -> "Lista de arquivos" -> le a tabela -> salva em saida/ (CSV + print).
-Com --baixar, tambem baixa os PDFs que ainda nao estao em saida/pdfs/.
+Com --baixar, baixa o relatorio MAIS RECENTE do DN (pela data do relatorio).
+Com --baixar-todos, baixa os que faltam, do mais antigo ao mais novo.
 
 SOMENTE LEITURA: so navega, le e baixa. Nao clica em botoes de envio.
 
@@ -12,7 +13,8 @@ Usuario e senha: arquivo .env nesta pasta (PORTAL_USUARIO, PORTAL_SENHA).
 A senha nunca e impressa nem gravada em log.
 
     python saga_rpa.py              # le a lista
-    python saga_rpa.py --baixar     # le e baixa os PDFs novos
+    python saga_rpa.py --baixar        # le e baixa o relatorio mais recente
+    python saga_rpa.py --baixar-todos  # baixa os que faltam (atrasados)
     python saga_rpa.py --sem-janela # sem abrir janela do navegador
 """
 from __future__ import annotations
@@ -58,6 +60,18 @@ def log(msg: str) -> None:
 def sem_acento(t: str) -> str:
     t = unicodedata.normalize("NFKD", str(t or ""))
     return "".join(c for c in t if not unicodedata.combining(c)).lower().strip()
+
+
+def data_relatorio(nome: str, ano: str = "", mes: str = "") -> tuple:
+    """Data do RELATORIO (nao da tela): 2026-09-22.001079_RELATORIO_VH47.pdf -> (2026, 9, 22).
+    Sem data no nome, usa Ano/Mes da lista (dia 0)."""
+    m = re.search(r"(20\d\d)-(\d\d)-(\d\d)", nome or "")
+    if m:
+        return int(m.group(1)), int(m.group(2)), int(m.group(3))
+    try:
+        return int(re.sub(r"\D", "", ano) or 0), int(re.sub(r"\D", "", mes) or 0), 0
+    except ValueError:
+        return 0, 0, 0
 
 
 class Falha(Exception):
@@ -483,7 +497,9 @@ class Portal:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--baixar", action="store_true", help="baixa os PDFs que ainda nao estao em saida/pdfs")
+    ap.add_argument("--baixar", action="store_true", help="baixa o relatorio MAIS RECENTE do DN")
+    ap.add_argument("--baixar-todos", action="store_true",
+                    help="baixa todos os que ainda nao estao em saida/pdfs, do mais antigo ao mais novo (atrasados)")
     ap.add_argument("--sem-janela", action="store_true")
     args = ap.parse_args()
 
@@ -521,23 +537,37 @@ def main() -> int:
                 w.writerows(itens)
             meus = [i for i in itens if any(re.sub(r"\D", "", str(v)).lstrip("0") == dn
                                             for k, v in i.items() if sem_acento(k) == "dn")]
+            nome_col = next((c for c in cols if "arquivo" in sem_acento(c) or "nome" in sem_acento(c)), cols[-1])
+            col_ano = next((c for c in cols if sem_acento(c) == "ano"), None)
+            col_mes = next((c for c in cols if sem_acento(c) in ("mes", "mês")), None)
+
+            def quando(i):
+                return data_relatorio(str(i[nome_col]), str(i.get(col_ano, "")), str(i.get(col_mes, "")))
+
+            meus.sort(key=quando, reverse=True)  # MAIS RECENTE primeiro (pela data do relatorio)
             log(f"lista lida: {len(itens)} arquivos, {len(meus)} do DN {dn}  -> {arq.name}")
-            for i in meus[:10]:
+            if meus:
+                d = quando(meus[0])
+                log(f"mais recente: {meus[0][nome_col]}  (data {d[2]:02d}/{d[1]:02d}/{d[0]})")
+            for i in meus[:5]:
                 log("  " + " | ".join(str(i[c]) for c in cols))
-            if args.baixar:
+
+            if args.baixar or args.baixar_todos:
                 pasta = SAIDA / "pdfs"
                 pasta.mkdir(exist_ok=True)
-                for i in meus:
-                    nome_col = next((c for c in cols if "arquivo" in sem_acento(c) or "nome" in sem_acento(c)), cols[-1])
+                # normal: so o mais recente. --baixar-todos: os que faltam, do mais antigo ao mais novo
+                fila = meus[:1] if not args.baixar_todos else list(reversed(meus))
+                for i in fila:
                     nome = re.sub(r'[<>:"/\\|?*]', "_", str(i[nome_col])) or "arquivo"
                     destino = pasta / (nome if nome.lower().endswith(".pdf") else nome + ".pdf")
                     if destino.exists():
+                        log(f"ja baixado antes: {destino.name}")
                         continue
                     log(f"baixando {destino.name}")
                     portal.baixar(i, destino)
                     log(f"  ok ({destino.stat().st_size // 1024} KB)")
                 if list((AQUI / "planilhas").glob("*.xls")):
-                    log("cruzando o PDF mais novo com as planilhas da pasta 'planilhas'")
+                    log("cruzando o relatorio MAIS RECENTE com as planilhas da pasta 'planilhas'")
                     import cruzar
                     cruzar.main([])
                 else:

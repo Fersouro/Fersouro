@@ -13,7 +13,8 @@ portal.
 ## Rodar
 
 - `RODAR.bat` lê a lista.
-- `RODAR.bat --baixar` lê a lista e baixa os PDFs novos do DN.
+- `RODAR.bat --baixar` baixa o relatório **mais recente** do DN (pela data do relatório, no nome do arquivo) e cruza com a planilha.
+- `RODAR.bat --baixar-todos` baixa os que faltam, do mais antigo ao mais novo (relatórios atrasados).
 
 ## Resultado (pasta `saida/`)
 
