@@ -32,7 +32,9 @@ SAIDA = AQUI / "saida"
 URL = os.environ.get("PORTAL_URL", "https://www.portalredevw.com.br/portalredevw2/default.aspx")
 
 # Caminho no portal: textos dos menus/links, clicados nesta ordem.
-CAMINHO = ["Garantia Volkswagen", "SAGA"]
+# Pode trocar no .env:  PORTAL_CAMINHO=Garantia;Garantia Volkswagen;SAGA
+CAMINHO = [p.strip() for p in os.environ.get(
+    "PORTAL_CAMINHO", "Garantia;Garantia Volkswagen;SAGA").split(";") if p.strip()]
 RELATORIO = r"SAGA\s*2\s*-?\s*VH\s*47"
 LINK_LISTA = r"Lista\s+de\s+arquivos"
 # Botoes que o RPA NUNCA clica (seguranca: so leitura)
@@ -65,7 +67,8 @@ class Portal:
         opcoes = dict(user_data_dir=str(AQUI / "perfil"), headless=not visivel,
                       accept_downloads=True, downloads_path=str(self.pasta_dl), locale="pt-BR")
         try:
-            self.ctx = pw.chromium.launch_persistent_context(channel="msedge", **opcoes)
+            self.ctx = pw.chromium.launch_persistent_context(
+                channel="msedge", ignore_default_args=["--no-sandbox"], **opcoes)
         except Exception:
             exe = os.environ.get("CHROMIUM_EXE")
             self.ctx = pw.chromium.launch_persistent_context(
@@ -153,40 +156,53 @@ class Portal:
         return arq
 
     # ------------------------------------------------------------------ etapas
+    def campo_senha(self):
+        for _, fr in self.frames():
+            try:
+                loc = fr.locator("input[type=password]")
+                for i in range(loc.count()):
+                    if loc.nth(i).is_visible():
+                        return fr, loc.nth(i)
+            except Exception:
+                continue
+        return None, None
+
     def login(self, usuario: str, senha: str) -> None:
         log(f"abrindo {URL}")
         self.page.goto(URL, wait_until="domcontentloaded")
         self.pausa(2)
-        if self.achar(CAMINHO[0], 5)[1] is not None:
-            log("ja estava logado (sessao guardada)")
+        fr, senha_el = self.campo_senha()
+        if senha_el is None:
+            log("sem tela de login: ja estava logado (sessao guardada)")
             return
-        campo_senha = None
-        for _, fr in self.frames():
-            loc = fr.locator("input[type=password]")
-            if loc.count() and loc.first.is_visible():
-                campo_senha = loc.first
-                break
-        if campo_senha is None:
+        # Usuario = o campo de texto IMEDIATAMENTE antes da senha, no mesmo
+        # formulario/caixa (a pagina tem outros campos, ex.: busca do Suporte).
+        marcou = fr.evaluate("""() => {
+            const vis = e => !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length);
+            const todos = [...document.querySelectorAll('input')].filter(vis);
+            const i = todos.findIndex(e => e.type === 'password');
+            for (let j = i - 1; j >= 0; j--) {
+                const t = (todos[j].type || 'text').toLowerCase();
+                if (t === 'text' || t === 'email' || t === 'tel' || t === 'number') {
+                    todos[j].setAttribute('data-rpa-usuario', '1'); return true; }
+            }
+            return false; }""")
+        if not marcou:
             self.print("login_nao_encontrado")
-            raise Falha("nao achei o campo de senha na tela de login")
-        # campo de usuario: o input de texto visivel antes da senha
-        for _, fr in self.frames():
-            usu = fr.locator("input[type=text]:visible, input[type=email]:visible, input:not([type]):visible")
-            if usu.count():
-                usu.first.fill(usuario)
-                break
-        else:
-            raise Falha("nao achei o campo de usuario")
-        campo_senha.fill(senha)
-        log("usuario e senha preenchidos")
-        campo_senha.press("Enter")
-        self.seguir(self.page, set(id(p) for p in self.ctx.pages))
-        if self.achar(CAMINHO[0], TIMEOUT)[1] is None:
+            raise Falha("nao achei o campo de usuario ao lado da senha")
+        fr.locator("[data-rpa-usuario='1']").first.fill(usuario)
+        senha_el.fill(senha)
+        log("usuario e senha preenchidos (campo Login)")
+        antes = set(id(p) for p in self.ctx.pages)
+        senha_el.press("Enter")
+        self.seguir(self.page, antes)
+        self.pausa(2)
+        if self.campo_senha()[1] is not None:
             self.print("login_falhou")
-            texto = sem_acento(self.page.inner_text("body")[:2000]) if self.page else ""
+            texto = sem_acento(self.page.inner_text("body")[:3000])
             if "captcha" in texto or "codigo" in texto or "token" in texto:
                 raise Falha("o portal pediu CAPTCHA/codigo -- precisa de uma pessoa")
-            raise Falha("login nao passou (senha errada ou tela diferente) -- veja o print em saida/")
+            raise Falha("login nao passou (a tela de senha continua) -- veja o print em saida/")
         log("login OK")
 
     def ir_para_lista(self) -> None:
