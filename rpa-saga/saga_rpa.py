@@ -302,10 +302,15 @@ class Portal:
         fim = time.monotonic() + 20
         while time.monotonic() < fim:
             for page, fr in self.frames():
-                try:
-                    r = fr.evaluate(js, [EMPRESA_NOME, EMPRESA_DN])
-                except Exception:
-                    continue
+                r = None
+                # 1a tentativa: nome + DN; 2a: so o DN (tela que mostra so o numero)
+                for nome in (EMPRESA_NOME, ""):
+                    try:
+                        r = fr.evaluate(js, [nome, EMPRESA_DN])
+                    except Exception:
+                        r = None
+                    if r:
+                        break
                 if not r:
                     continue
                 log(f"empresa encontrada ({r['como']}): {r['texto'][:120]}")
