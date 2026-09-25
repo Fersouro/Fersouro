@@ -4,3 +4,5 @@
 saida/
 perfil/
 __pycache__/
+planilhas/*.xls
+planilhas/*.xlsx

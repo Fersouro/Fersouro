@@ -536,6 +536,12 @@ def main() -> int:
                     log(f"baixando {destino.name}")
                     portal.baixar(i, destino)
                     log(f"  ok ({destino.stat().st_size // 1024} KB)")
+                if list((AQUI / "planilhas").glob("*.xls")):
+                    log("cruzando o PDF mais novo com as planilhas da pasta 'planilhas'")
+                    import cruzar
+                    cruzar.main([])
+                else:
+                    log("para cruzar com a planilha: coloque o .xls do fechamento em 'planilhas' e rode CRUZAR.bat")
             log("=== fim: OK ===")
             return 0
         except Falha as e:
