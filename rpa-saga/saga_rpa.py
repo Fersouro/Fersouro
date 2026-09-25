@@ -178,21 +178,36 @@ class Portal:
         # Usuario = o campo de texto IMEDIATAMENTE antes da senha, no mesmo
         # formulario/caixa (a pagina tem outros campos, ex.: busca do Suporte).
         marcou = fr.evaluate("""() => {
+            // Campo de usuario = o campo de texto MAIS PERTO da senha na tela
+            // (no Portal Rede, a caixa "Login" fica colada na senha; a busca
+            // do "Suporte" fica acima). Nome com login/usuario/cpf ganha bonus.
             const vis = e => !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length);
-            const todos = [...document.querySelectorAll('input')].filter(vis);
-            const i = todos.findIndex(e => e.type === 'password');
-            for (let j = i - 1; j >= 0; j--) {
-                const t = (todos[j].type || 'text').toLowerCase();
-                if (t === 'text' || t === 'email' || t === 'tel' || t === 'number') {
-                    todos[j].setAttribute('data-rpa-usuario', '1'); return true; }
+            const inputs = [...document.querySelectorAll('input')].filter(vis);
+            const senha = inputs.find(e => e.type === 'password');
+            if (!senha) return false;
+            const rs = senha.getBoundingClientRect();
+            let melhor = null, nota = 1e9;
+            for (const e of inputs) {
+                const t = (e.type || 'text').toLowerCase();
+                if (!['text', 'email', 'tel', 'number'].includes(t)) continue;
+                const r = e.getBoundingClientRect();
+                let d = Math.hypot((r.left + r.right) / 2 - (rs.left + rs.right) / 2,
+                                   (r.top + r.bottom) / 2 - (rs.top + rs.bottom) / 2);
+                const nome = ((e.name || '') + ' ' + (e.id || '')).toLowerCase();
+                if (/login|usu|user|cpf/.test(nome)) d -= 300;
+                if (/busca|search|pesq|suporte/.test(nome)) d += 1000;
+                if (senha.form && e.form === senha.form) d -= 100;
+                if (d < nota) { nota = d; melhor = e; }
             }
-            return false; }""")
+            if (!melhor) return false;
+            melhor.setAttribute('data-rpa-usuario', '1');
+            return true; }""")
         if not marcou:
             self.print("login_nao_encontrado")
             raise Falha("nao achei o campo de usuario ao lado da senha")
         fr.locator("[data-rpa-usuario='1']").first.fill(usuario)
         senha_el.fill(senha)
-        log("usuario e senha preenchidos (campo Login)")
+        log("usuario e senha preenchidos (campo Login, v3)")
         antes = set(id(p) for p in self.ctx.pages)
         senha_el.press("Enter")
         self.seguir(self.page, antes)
