@@ -247,14 +247,16 @@ class Portal:
             if novas:
                 self.page = novas[-1]
                 break
-            if self.page.url != url_antes or self.campo_senha()[1] is None:
+            if self.page.url != url_antes or self.campo_senha()[1] is None or self.tela_empresa():
                 break
         try:
             self.page.wait_for_load_state("domcontentloaded", timeout=15000)
         except Exception:
             pass
         self.pausa(2)
-        if self.campo_senha()[1] is not None and self.page.url == url_antes:
+        # A caixa de Login continua no topo mesmo depois de entrar; o que prova
+        # o login e a tela "Escolhendo a empresa" (ou o campo de senha sumir).
+        if self.campo_senha()[1] is not None and self.page.url == url_antes and not self.tela_empresa():
             self.print("login_falhou")
             self.salvar_html("login_falhou")
             texto = ""
@@ -269,6 +271,23 @@ class Portal:
                 raise Falha("o portal recusou o login (usuario/senha invalidos ou conta bloqueada) -- veja o print")
             raise Falha("login nao passou (a tela nao mudou) -- veja login_falhou.png em saida/")
         log("login OK")
+
+    def tela_empresa(self) -> bool:
+        """Esta na tela 'Escolhendo a empresa' (ou ha uma opcao com o DN)?"""
+        for _, fr in self.frames():
+            try:
+                if fr.evaluate("""(dn) => {
+                    const t = (document.body && document.body.innerText) || '';
+                    if (/escolhendo a empresa/i.test(t)) return true;
+                    const r = new RegExp('\\(0*' + dn + '\\)');
+                    return [...document.querySelectorAll('input[type=radio], option')].some(e => {
+                        const l = e.labels && e.labels[0] ? e.labels[0].innerText : (e.text || '');
+                        const viz = (e.parentElement && e.parentElement.innerText) || '';
+                        return r.test(l) || r.test(viz); }); }""", EMPRESA_DN):
+                    return True
+            except Exception:
+                continue
+        return False
 
     def escolher_empresa(self) -> None:
         """Tela de escolha de empresa: marca a linha/opcao que tem TTERRASUL e
@@ -317,10 +336,10 @@ class Portal:
                 antes = set(id(p) for p in self.ctx.pages)
                 if r["como"] != "lista":
                     el = fr.locator("[data-rpa-emp='1']").first
-                    if r["como"] == "marcar":
-                        el.check(force=True)
-                    else:
-                        el.click()
+                    # clique simples: marcar o radio ja recarrega a pagina no
+                    # portal (postback), entao nao da para "conferir" a marca.
+                    el.click(force=True, no_wait_after=True)
+                    log("DN marcado")
                     self.pausa(1)
                 # botao de confirmar, se existir
                 for b in ("OK", "Confirmar", "Acessar", "Entrar", "Continuar", "Selecionar", "Avançar", "Prosseguir"):
