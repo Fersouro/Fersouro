@@ -29,12 +29,14 @@ from pathlib import Path
 
 AQUI = Path(__file__).resolve().parent
 SAIDA = AQUI / "saida"
-URL = os.environ.get("PORTAL_URL", "https://www.portalredevw.com.br/portalredevw2/default.aspx")
+URL = os.environ.get("PORTAL_URL", "https://www.portalredevw.com.br/portalredevw2/Default.aspx")
 
 # Caminho no portal: textos dos menus/links, clicados nesta ordem.
 # Pode trocar no .env:  PORTAL_CAMINHO=Garantia;Garantia Volkswagen;SAGA
 CAMINHO = [p.strip() for p in os.environ.get(
     "PORTAL_CAMINHO", "Garantia;Garantia Volkswagen;SAGA").split(";") if p.strip()]
+# Empresa escolhida depois do login (tela de selecao de empresa/DN).
+EMPRESA = os.environ.get("PORTAL_EMPRESA", r"TTERRASUL.*1079|1079.*TTERRASUL")
 RELATORIO = r"SAGA\s*2\s*-?\s*VH\s*47"
 LINK_LISTA = r"Lista\s+de\s+arquivos"
 # Botoes que o RPA NUNCA clica (seguranca: so leitura)
@@ -220,6 +222,51 @@ class Portal:
             raise Falha("login nao passou (a tela de senha continua) -- veja o print em saida/")
         log("login OK")
 
+    def escolher_empresa(self) -> None:
+        """Se o portal mostrar a escolha de empresa, escolhe TTERRASUL 1079.
+        Se nao mostrar (ja escolhida / so uma empresa), segue."""
+        rx = re.compile(EMPRESA, re.I)
+        fim = time.monotonic() + 15
+        while time.monotonic() < fim:
+            for page, fr in self.frames():
+                # 1) lista suspensa (<select>)
+                try:
+                    for sel in fr.locator("select").all():
+                        if not sel.is_visible():
+                            continue
+                        opcoes = sel.locator("option").all_inner_texts()
+                        alvo = next((o for o in opcoes if rx.search(o)), None)
+                        if alvo:
+                            sel.select_option(label=alvo)
+                            log(f"empresa escolhida: {alvo.strip()}")
+                            self.pausa(1)
+                            for b in ("OK", "Confirmar", "Acessar", "Entrar", "Continuar", "Selecionar"):
+                                bt = fr.get_by_role("button", name=re.compile(rf"^\s*{b}\s*$", re.I))
+                                if bt.count() and bt.first.is_visible():
+                                    antes = set(id(p) for p in self.ctx.pages)
+                                    bt.first.click()
+                                    self.seguir(page, antes)
+                                    break
+                            return
+                except Exception:
+                    pass
+                # 2) link/linha clicavel com o nome da empresa
+                try:
+                    loc = fr.get_by_text(rx)
+                    for i in range(min(loc.count(), 5)):
+                        el = loc.nth(i)
+                        if el.is_visible():
+                            txt = el.inner_text().strip()
+                            antes = set(id(p) for p in self.ctx.pages)
+                            el.click()
+                            self.seguir(page, antes)
+                            log(f"empresa escolhida: {txt}")
+                            return
+                except Exception:
+                    pass
+            self.pausa(0.5)
+        log("nenhuma tela de escolha de empresa (seguindo)")
+
     def ir_para_lista(self) -> None:
         for passo in CAMINHO:
             log(f"clicando em: {passo}")
@@ -333,6 +380,8 @@ def main() -> int:
         portal = Portal(pw, visivel=not args.sem_janela)
         try:
             portal.login(usuario, senha)
+            portal.escolher_empresa()
+            portal.print("depois_do_login")
             portal.ir_para_lista()
             itens = portal.ler_lista()
             portal.print("lista")
@@ -365,6 +414,11 @@ def main() -> int:
             portal.print("erro")
             log(f"ERRO: {e}")
             return 1
+        except Exception as e:  # rede fora, portal fora do ar, tela inesperada
+            portal.print("erro")
+            log(f"ERRO DE ACESSO: {type(e).__name__}: {str(e).splitlines()[0]}")
+            log("(portal fora do ar ou sem internet NAO quer dizer que nao ha arquivo novo)")
+            return 2
         finally:
             portal.ctx.close()
 
