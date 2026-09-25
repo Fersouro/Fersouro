@@ -51,7 +51,9 @@ class Config:
             self.pasta = (RAIZ_PROJETO / self.pasta).resolve()
         lista = bruto.get("lista") or {}
         self.dns = [chave_numerica(d) for d in str(lista.get("dn") or "").split(",") if d.strip()]
-        self.esperado_por_mes = int(lista.get("esperado_por_mes", 0) or 0)
+        # Regra critica: a quantidade de fechamentos do mes NAO e configurada;
+        # vem do Portal Rede. Qualquer "esperado_por_mes" no YAML e ignorado.
+        self.esperado_por_mes = 0
         self.portal = ConfigPortal.from_dict(bruto.get("portal") or {}, lista, self.pasta)
         try:
             self.layouts = [Layout.from_dict(l) for l in (bruto.get("extracao") or {}).get("layouts") or []]

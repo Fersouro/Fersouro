@@ -76,8 +76,8 @@ Códigos de saída: `0` ok · `2` terminou, mas algum arquivo deu erro · `1` fa
   - **B (atrasados):** baixa também os faltantes de meses anteriores. Por
     exemplo, os relatórios 03 e 04 de setembro não ficam para trás só porque o
     05 já saiu.
-- **Aviso de lacuna:** se um mês já fechado tem menos arquivos no portal que
-  `esperado_por_mes` (4), a RPA registra um aviso no log.
+- **Quantidade de fechamentos:** não existe número esperado por mês (nem 4, nem
+  5). Quem define é o Portal Rede. Veja a regra crítica abaixo.
 - **Identidade do arquivo:** `(ano, mês, regional, DN, nome)`, mais o SHA-256
   do conteúdo. Se o portal renomear um arquivo, o conteúdo igual é reconhecido
   (status `duplicado`) e não entra de novo na planilha.
@@ -173,6 +173,49 @@ Definida pelo negócio em 24/09/2026.
   - **Pendente:** como o SAGA escreve essa O.S. no PDF, e se a automação deve
     gravar `212646A` ou `212.646A`.
 
+## REGRA CRÍTICA: quantidade real de fechamentos do mês
+
+Definida pelo negócio em 25/09/2026.
+
+**O Portal Rede é a fonte de verdade.** A quantidade de fechamentos de um mês
+**não** é presumida, fixada nem informada pelo usuário: o auxiliar a descobre
+lendo a Lista de arquivos do SAGA2 - VH47 daquele mês (DN 1079).
+
+1. **Não existe regra de 4 ou 5.** Se o portal mostra 4 relatórios, o mês tem 4
+   fechamentos. Se mostra 5, tem 5.
+2. **Não criar fechamento artificial.** Nada de 5º "reservado", pasta ou
+   planilha vazia porque "normalmente existe".
+3. **Toda execução compara Portal Rede × Drive:**
+   - Portal 5 × Drive 4 → **existe 1 novo fechamento para processar**;
+   - Portal 4 × Drive 4 → **nenhum novo fechamento**;
+   - Portal 5 × Drive 5 → **todos os fechamentos já foram processados**.
+4. **Não basta contar.** Cada fechamento é identificado pelo relatório: nome do
+   arquivo, data, período, número de lançamento e SGs do PDF. Assim um arquivo
+   duplicado ou uma versão diferente não é confundido com um fechamento novo.
+5. **A ordem é:** Portal → analisar o mês → identificar todos os fechamentos →
+   quantidade real → comparar com o Drive → identificar os não processados →
+   **só então** criar o que falta. Nada é criado antes de saber qual fechamento
+   está sendo processado.
+6. **Processamento de um fechamento novo:**
+   1. pasta/arquivo do fechamento;
+   2. PDF;
+   3. SGs/O.S.;
+   4. planilha;
+   5. BRAVOS (NFs e valores);
+   6. preenchimento;
+   7. conferência;
+   8. status **PRONTO PARA CONFERÊNCIA**.
+7. **Quando não dá para saber com segurança,** o resultado é **STATUS: NECESSITA
+   CONFERÊNCIA** ("Não foi possível determinar com segurança a quantidade de
+   fechamentos disponíveis no Portal Rede para o período"). A execução para
+   antes de criar qualquer arquivo.
+
+**Papéis:** o Portal Rede determina a realidade. O Drive registra e organiza. O
+BRAVOS complementa as SGs/O.S. com NFs e valores. A planilha consolida. O
+Henrique faz a conferência final.
+
+Implementação: `rpa-saga/comparar_mes.py` (Portal × Drive, só leitura).
+
 ## O PDF VH47 real (analisado em 24/09/2026)
 
 Arquivo de referência: `2026-09-22.001079_RELATORIO_VH47 (2).pdf`, na pasta do
@@ -251,8 +294,8 @@ respeitar:
   próximo fechamento". A regra anti-duplicidade vale **dentro de cada
   fechamento**, não na pasta inteira.
 - **Ainda não comprovado:**
-  - se 1 relatório SAGA corresponde a 1 fechamento (a hipótese vem da
-    contagem de 4 a 5 por mês);
+  - se 1 relatório SAGA corresponde a 1 fechamento (a quantidade por mês varia;
+    quem define é o Portal Rede);
   - qual seção cada SG ocupa;
   - se VALOR CRÉDITO é o "valor total da SG".
 

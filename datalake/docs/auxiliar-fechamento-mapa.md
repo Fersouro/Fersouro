@@ -28,7 +28,7 @@ técnica como ausência de informação.
 | Os arquivos são **.xls (Excel 97-2003)**, aba "Quinzena", com cabeçalho `Nº OS · Nº NF P. · Nº NF S. · DATA EMISSÃO · VAL. NF. SERV. · VAL. NF. PEÇA · VALOR CRÉDITO · DIFERENÇA` e as seções Principal, Revisões, Reconsideração de Garantias e Locações, cada uma com TOTAL, mais o TOTAL GERAL | [VERIFICADO] 13 arquivos de jul–set/2026 lidos por completo |
 | DIFERENÇA = crédito − (NF serviço + NF peça). Um valor negativo é **crédito menor que o faturado** | [VERIFICADO] fórmula `=(G-(F+E))` em 251 linhas |
 | A mesma O.S. aparece em vários fechamentos quando o pagamento vem em partes ("Diferença deverá ser quitada no próximo fechamento" → "Diferença quitada") | [VERIFICADO] 45 casos entre jul e set/2026 |
-| São de 4 a 5 fechamentos por mês, criados mais ou menos toda semana. O próximo é criado vazio, a partir do modelo | [VERIFICADO] nomes e datas; o 4º de set/2026 está vazio |
+| A quantidade de fechamentos por mês **varia** (jul/2026: 5; ago: 4). **Quem define é o Portal Rede**: não há número fixo (regra crítica em `saga-vh47.md`) | [VERIFICADO] Drive; regra definida pelo negócio |
 | O.S. com letra no fim (ex.: `212.646A`) = relançamento manual da mesma O.S. | [VERIFICADO] regra do negócio; 1 caso na planilha |
 | O Apache POI edita o `.xls` sem alterar nada além das células gravadas | [VERIFICADO] 13 arquivos regravados, 0 diferenças |
 | O ERP Linx (Oracle, schema CNP) já chega ao datalake **somente leitura**: `OFI_ORDEM_SERVICO` (com `DTA_FIM_GARANTIA` e `SERVICO_GARANTIA`), `FAT_MOVIMENTO_CAPA` (notas), `FAT_MOVIMENTO_ITEM`, `FAT_FONTE` (fonte pagadora "garantia") | [VERIFICADO] `conf/sources/ccm.yml` e `sql/gold/*` |

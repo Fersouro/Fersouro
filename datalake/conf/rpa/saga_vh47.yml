@@ -36,8 +36,8 @@ lista:
     dn: [DN]
     nome: [Nome do arquivo, Nome, Arquivo]
   dn: ${SAGA_DN:-}
-  # quantos relatorios o portal costuma publicar por mes (so para avisar lacuna)
-  esperado_por_mes: 4
+  # SEM quantidade esperada por mes: o Portal Rede e a fonte de verdade
+  # (regra critica em docs/saga-vh47.md).
 
 # Extracao dos PDFs. Cada campo: tipo (documento | dinheiro | data | texto),
 # rotulos (regex, em ordem de prioridade; valem com/sem acento e maiuscula).

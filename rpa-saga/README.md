@@ -42,3 +42,14 @@ Versões da mesma O.S. são somadas. No fim aparece o **crédito total** do
 relatório, e o detalhe fica em `saida/cruzamento_*.csv`.
 
 O cruzamento **não altera** nenhuma planilha.
+
+## Portal Rede × Drive (quantidade real de fechamentos)
+
+`COMPARAR-MES.bat`, que também roda sozinho no `RODAR.bat`, mostra:
+
+- quantos fechamentos o **Portal Rede** tem no mês;
+- quantos já existem no **Drive** (os `.xls` da pasta `planilhas`);
+- quais são **novos** e o que **necessita conferência**.
+
+Não existe número fixo por mês: quem manda é o Portal Rede. Nenhuma pasta ou
+planilha é criada por este passo.

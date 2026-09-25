@@ -552,6 +552,16 @@ def main() -> int:
             for i in meus[:5]:
                 log("  " + " | ".join(str(i[c]) for c in cols))
 
+            # Portal x Drive: quantidade REAL de fechamentos do mes (regra critica)
+            try:
+                import comparar_mes
+                log("comparando Portal Rede x Drive (quantidade real de fechamentos do mes)")
+                comparar_mes.main_args = None
+                sys.argv = [sys.argv[0]]
+                comparar_mes.main()
+            except Exception as e:
+                log(f"comparacao Portal x Drive nao executada: {e}")
+
             if args.baixar or args.baixar_todos:
                 pasta = SAIDA / "pdfs"
                 pasta.mkdir(exist_ok=True)
