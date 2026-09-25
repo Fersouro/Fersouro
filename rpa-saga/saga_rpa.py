@@ -395,6 +395,18 @@ class Portal:
           for (const a of links){ let e=a,p=0; while(e&&e!==document.body){ if(rR.test(tx(e))){
               const n=[...e.querySelectorAll('a,button,input')].filter(x=>rL.test(tx(x))).length;
               if((n<=1||e===a)&&p<prof){melhor=a;prof=p;} break;} e=e.parentElement;p++; } }
+          if(!melhor){
+            // Tela real: titulos e links soltos, um embaixo do outro. Pega o
+            // primeiro link "Lista de Arquivos" DEPOIS do titulo "Saga2 - VH47"
+            // e antes do proximo titulo "Saga2 - ...".
+            const w=document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT|NodeFilter.SHOW_TEXT);
+            let depois=false, n;
+            while((n=w.nextNode())){
+              if(n.nodeType===3){ const t=n.textContent.replace(/\s+/g,' ').trim();
+                if(!t) continue;
+                if(rR.test(t)){ depois=true; continue; }
+                if(depois && /saga\s*2\s*-/i.test(t) && !rL.test(t)) break; }
+              else if(depois && links.includes(n)){ melhor=n; break; } } }
           if(melhor){melhor.setAttribute('data-rpa','1');return true;} return false; }"""
         fim = time.monotonic() + TIMEOUT
         while time.monotonic() < fim:
