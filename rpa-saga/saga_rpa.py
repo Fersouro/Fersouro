@@ -32,9 +32,9 @@ SAIDA = AQUI / "saida"
 URL = os.environ.get("PORTAL_URL", "https://www.portalredevw.com.br/portalredevw2/Default.aspx")
 
 # Caminho no portal: textos dos menus/links, clicados nesta ordem.
-# Pode trocar no .env:  PORTAL_CAMINHO=Garantia;Garantia Volkswagen;SAGA
+# Pode trocar no .env:  PORTAL_CAMINHO=Garantia;SAGA2
 CAMINHO = [p.strip() for p in os.environ.get(
-    "PORTAL_CAMINHO", "Garantia;Garantia Volkswagen;SAGA").split(";") if p.strip()]
+    "PORTAL_CAMINHO", "Garantia;SAGA2").split(";") if p.strip()]
 # Empresa escolhida depois do login (tela de selecao de empresa/DN).
 # Os dois termos podem estar em colunas diferentes da mesma linha.
 EMPRESA_NOME = os.environ.get("PORTAL_EMPRESA_NOME", "TTERRASUL")
@@ -369,7 +369,20 @@ class Portal:
         (SAIDA / f"{dt.datetime.now():%Y%m%d_%H%M%S}_{nome}.html").write_text("\n".join(partes), encoding="utf-8")
 
     def ir_para_lista(self) -> None:
-        for passo in CAMINHO:
+        for i, passo in enumerate(CAMINHO):
+            proximo = CAMINHO[i + 1] if i + 1 < len(CAMINHO) else None
+            if proximo:
+                # menu suspenso: passar o mouse costuma abrir o submenu;
+                # so clica se o proximo item nao aparecer.
+                page, el = self.achar(passo)
+                if el is None:
+                    self.print("erro_menu")
+                    raise Falha(f"nao achei '{passo}' na tela")
+                el.hover()
+                self.pausa(1)
+                if self.achar(proximo, 3)[1] is not None:
+                    log(f"mouse sobre: {passo}")
+                    continue
             log(f"clicando em: {passo}")
             self.clicar(passo)
         log('procurando "Lista de arquivos" do SAGA2 - VH47')
