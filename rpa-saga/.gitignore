@@ -1,0 +1,6 @@
+# Senha e resultados NUNCA vao para o git
+.env
+.venv/
+saida/
+perfil/
+__pycache__/
