@@ -22,6 +22,8 @@ import tempfile
 import xml.etree.ElementTree as ET
 import zipfile
 
+import json
+
 import numpy as np
 import trimesh
 from shapely.geometry import MultiPolygon, Polygon
@@ -139,6 +141,38 @@ def gravar_3mf(pasta, local, n_faces_total, destino):
                     z.write(os.path.join(raiz, a), rel)
 
 
+# O 3MF vem com o perfil "0.20mm Strength": 6 paredes e 25 % de grade. Numa
+# concha de racao isso so empurra plastico para dentro de um bloco que ninguem
+# ve - sai em 90 g. Nesta peca cada parede custa ~13 g (o contorno da pata, o da
+# concha e o do cabo se repetem por 200 camadas) e o preenchimento quase nao
+# pesa, entao o perfil leve corta parede e troca a grade por relampago, que so
+# levanta coluna onde ha topo para apoiar. Da 49 g, com a mesma geometria.
+PERFIL_LEVE = {
+    "wall_loops": "2",
+    "sparse_infill_density": "5%",
+    "sparse_infill_pattern": "lightning",
+    "top_shell_layers": "4",
+    "top_shell_thickness": "0.8",
+    "bottom_shell_layers": "3",
+    "print_settings_id": "0.20mm Leve BageVet @BBL X1C",
+}
+
+
+def gravar_perfil_leve(origem, destino):
+    """Copia o 3MF trocando so o perfil de impressao; a malha nao e tocada."""
+    if os.path.exists(destino):
+        os.remove(destino)
+    zin = zipfile.ZipFile(origem)
+    with zipfile.ZipFile(destino, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            dados = zin.read(item.filename)
+            if item.filename == "Metadata/project_settings.config":
+                cfg = json.loads(dados)
+                cfg.update(PERFIL_LEVE)
+                dados = json.dumps(cfg, indent=4, ensure_ascii=False).encode()
+            zout.writestr(item, dados)
+
+
 def main(entrada, logo_stl="logo.stl", saida="saida"):
     pasta = tempfile.mkdtemp()
     with zipfile.ZipFile(entrada) as z:
@@ -187,6 +221,10 @@ def main(entrada, logo_stl="logo.stl", saida="saida"):
     n = len(principal.faces) + sum(len(c.faces) for c in claros) + len(local.faces)
     gravar_3mf(pasta, local, n, f"{saida}/pegador_bagevet.3mf")
     shutil.rmtree(pasta)
+
+    # 4. o mesmo 3MF com o perfil leve ja gravado
+    gravar_perfil_leve(f"{saida}/pegador_bagevet.3mf",
+                       f"{saida}/pegador_bagevet_leve.3mf")
 
     print("\narquivos gerados:")
     for raiz, _, arquivos in os.walk(saida):

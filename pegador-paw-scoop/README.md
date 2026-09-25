@@ -30,7 +30,9 @@ Sai uma pasta `saida/` com:
 - `multipartes/` — corpo, peças claras e marca em arquivos separados, com a
   geometria exata do original;
 - `pegador_bagevet.3mf` — o arquivo de entrada com a malha do texto trocada pela
-  da marca e nada mais, mantendo perfis, pintura por face e posição na mesa.
+  da marca e nada mais, mantendo perfis, pintura por face e posição na mesa;
+- `pegador_bagevet_leve.3mf` — o mesmo arquivo com o perfil de impressão leve já
+  gravado (ver abaixo). A malha é bit a bit igual à do anterior.
 
 ## Por que dá para colorir em STL
 
@@ -44,6 +46,30 @@ isso faz o leitor do slicer soldar os vértices e as partes deixam de se separar
 então **no arquivo colorido** cada inserto cresce 0,01 mm, para se sobrepor ao
 corpo em vez de tocá-lo. É um vigésimo de um traço de bico 0,4 — não muda nada
 no que sai impresso. Nos arquivos de `multipartes/` a geometria é a original.
+
+## O perfil leve
+
+O 3MF de origem vem com o perfil **"0.20mm Strength"**: 6 paredes e 25 % de
+preenchimento em grade. Numa concha de ração isso é perfil de peça estrutural —
+sai em **90 g e 2 h 50** na X1C.
+
+O peso não está na geometria. Nesta peça cada parede custa cerca de **13 g**,
+porque o contorno da pata, o da concha e o do cabo se repetem por 200 camadas;
+o preenchimento, esse, quase não pesa (entre 0 % e 10 % de relâmpago a diferença
+é menor que 2 g). Então `PERFIL_LEVE` corta parede e troca a grade por
+relâmpago, que só levanta coluna onde há superfície de topo para apoiar:
+
+| | antes | depois |
+| --- | --- | --- |
+| paredes | 6 | 2 |
+| preenchimento | 25 % grade | 5 % relâmpago |
+| camadas de topo | 5 | 4 |
+| PLA | 90,5 g | **48,6 g** |
+| tempo na X1C | 2 h 50 | **~1 h 50** |
+
+Abaixo de ~46 g o perfil não tem mais o que cortar: a peça fica com 39 cm³ de
+material para 93 cm³ de volume, ou seja, já é 58 % ar, e o que sobra é parede,
+primeira camada e topo. Daí em diante só reduzindo a peça.
 
 ## Conferências que o script faz
 
