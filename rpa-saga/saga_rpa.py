@@ -36,7 +36,9 @@ URL = os.environ.get("PORTAL_URL", "https://www.portalredevw.com.br/portalredevw
 CAMINHO = [p.strip() for p in os.environ.get(
     "PORTAL_CAMINHO", "Garantia;Garantia Volkswagen;SAGA").split(";") if p.strip()]
 # Empresa escolhida depois do login (tela de selecao de empresa/DN).
-EMPRESA = os.environ.get("PORTAL_EMPRESA", r"TTERRASUL.*1079|1079.*TTERRASUL")
+# Os dois termos podem estar em colunas diferentes da mesma linha.
+EMPRESA_NOME = os.environ.get("PORTAL_EMPRESA_NOME", "TTERRASUL")
+EMPRESA_DN = os.environ.get("PORTAL_EMPRESA_DN", "1079")
 RELATORIO = r"SAGA\s*2\s*-?\s*VH\s*47"
 LINK_LISTA = r"Lista\s+de\s+arquivos"
 # Botoes que o RPA NUNCA clica (seguranca: so leitura)
@@ -223,49 +225,78 @@ class Portal:
         log("login OK")
 
     def escolher_empresa(self) -> None:
-        """Se o portal mostrar a escolha de empresa, escolhe TTERRASUL 1079.
-        Se nao mostrar (ja escolhida / so uma empresa), segue."""
-        rx = re.compile(EMPRESA, re.I)
-        fim = time.monotonic() + 15
+        """Tela de escolha de empresa: marca a linha/opcao que tem TTERRASUL e
+        1079 (podem estar em colunas diferentes) e confirma. Se a tela nao
+        aparecer, segue."""
+        js = r"""([nome, dn]) => {
+          const rN = new RegExp(nome, 'i'), rD = new RegExp('(^|[^0-9])0*' + dn + '([^0-9]|$)');
+          const vis = e => !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length);
+          const tx = e => (e.innerText || e.textContent || '').replace(/\s+/g, ' ');
+          // 1) lista suspensa
+          for (const sel of document.querySelectorAll('select')) {
+            if (!vis(sel)) continue;
+            for (const o of sel.options) if (rN.test(o.text) && rD.test(o.text)) {
+              sel.value = o.value; sel.dispatchEvent(new Event('change', {bubbles: true}));
+              return {como: 'lista', texto: o.text.trim()}; } }
+          // 2) menor bloco (linha de tabela, item, label) com os dois termos
+          let alvo = null;
+          for (const e of document.querySelectorAll('tr, li, label, div, span, a, td')) {
+            if (!vis(e)) continue; const t = tx(e);
+            if (rN.test(t) && rD.test(t) && t.length < 300) {
+              if (!alvo || e.contains(alvo) === false && alvo.contains(e)) alvo = e;
+              else if (!alvo.contains(e) && t.length < tx(alvo).length) alvo = e; } }
+          if (!alvo) return null;
+          const marca = alvo.querySelector('input[type=radio], input[type=checkbox]')
+                     || (alvo.closest('tr') || alvo).querySelector('input[type=radio], input[type=checkbox]');
+          if (marca) { marca.setAttribute('data-rpa-emp', '1');
+                       return {como: 'marcar', texto: tx(alvo).trim()}; }
+          const clic = alvo.querySelector('a, button, input[type=button], input[type=submit]') || alvo;
+          clic.setAttribute('data-rpa-emp', '1');
+          return {como: 'clicar', texto: tx(alvo).trim()}; }"""
+        fim = time.monotonic() + 20
         while time.monotonic() < fim:
             for page, fr in self.frames():
-                # 1) lista suspensa (<select>)
                 try:
-                    for sel in fr.locator("select").all():
-                        if not sel.is_visible():
-                            continue
-                        opcoes = sel.locator("option").all_inner_texts()
-                        alvo = next((o for o in opcoes if rx.search(o)), None)
-                        if alvo:
-                            sel.select_option(label=alvo)
-                            log(f"empresa escolhida: {alvo.strip()}")
-                            self.pausa(1)
-                            for b in ("OK", "Confirmar", "Acessar", "Entrar", "Continuar", "Selecionar"):
-                                bt = fr.get_by_role("button", name=re.compile(rf"^\s*{b}\s*$", re.I))
-                                if bt.count() and bt.first.is_visible():
-                                    antes = set(id(p) for p in self.ctx.pages)
-                                    bt.first.click()
-                                    self.seguir(page, antes)
-                                    break
-                            return
+                    r = fr.evaluate(js, [EMPRESA_NOME, EMPRESA_DN])
                 except Exception:
-                    pass
-                # 2) link/linha clicavel com o nome da empresa
-                try:
-                    loc = fr.get_by_text(rx)
-                    for i in range(min(loc.count(), 5)):
-                        el = loc.nth(i)
-                        if el.is_visible():
-                            txt = el.inner_text().strip()
-                            antes = set(id(p) for p in self.ctx.pages)
-                            el.click()
-                            self.seguir(page, antes)
-                            log(f"empresa escolhida: {txt}")
-                            return
-                except Exception:
-                    pass
+                    continue
+                if not r:
+                    continue
+                log(f"empresa encontrada ({r['como']}): {r['texto'][:120]}")
+                antes = set(id(p) for p in self.ctx.pages)
+                if r["como"] != "lista":
+                    el = fr.locator("[data-rpa-emp='1']").first
+                    if r["como"] == "marcar":
+                        el.check(force=True)
+                    else:
+                        el.click()
+                    self.pausa(1)
+                # botao de confirmar, se existir
+                for b in ("OK", "Confirmar", "Acessar", "Entrar", "Continuar", "Selecionar", "Avançar", "Prosseguir"):
+                    bt = fr.locator(f"input[type=submit][value='{b}' i], input[type=button][value='{b}' i]").or_(
+                        fr.get_by_role("button", name=re.compile(rf"^\s*{b}\s*$", re.I)))
+                    try:
+                        if bt.count() and bt.first.is_visible():
+                            bt.first.click()
+                            log(f"confirmado ({b})")
+                            break
+                    except Exception:
+                        continue
+                self.seguir(page, antes)
+                return
             self.pausa(0.5)
-        log("nenhuma tela de escolha de empresa (seguindo)")
+        log(f"nao apareceu escolha de empresa com {EMPRESA_NOME} + {EMPRESA_DN} (seguindo)")
+
+    def salvar_html(self, nome: str) -> None:
+        """HTML da tela (todas as abas/frames) para diagnostico. Sem senha:
+        o valor digitado num campo de senha nao fica no HTML."""
+        partes = []
+        for page, fr in self.frames():
+            try:
+                partes.append(f"<!-- {page.url} | frame {fr.url} -->\n{fr.content()}")
+            except Exception:
+                pass
+        (SAIDA / f"{dt.datetime.now():%Y%m%d_%H%M%S}_{nome}.html").write_text("\n".join(partes), encoding="utf-8")
 
     def ir_para_lista(self) -> None:
         for passo in CAMINHO:
@@ -380,6 +411,8 @@ def main() -> int:
         portal = Portal(pw, visivel=not args.sem_janela)
         try:
             portal.login(usuario, senha)
+            portal.print("tela_empresa")
+            portal.salvar_html("tela_empresa")
             portal.escolher_empresa()
             portal.print("depois_do_login")
             portal.ir_para_lista()
