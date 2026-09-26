@@ -1,0 +1,6 @@
+# Nada de credencial, sessao ou dado do BRAVOS no git
+.env
+.venv/
+saida/
+perfil/
+__pycache__/

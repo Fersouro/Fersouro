@@ -1,0 +1,33 @@
+# Pecas - Estoque de agora (foto do ERP na ultima carga).
+#
+# Sem campo de data de proposito: e a foto do momento. Para uma data passada,
+# use o relatorio "Pecas - Estoque na data", que le os snapshots diarios.
+name: pecas-estoque-agora
+title: Pecas - Estoque agora
+description: >-
+  Disponivel por peca e revenda na ultima carga, com o valor parado em estoque.
+  Fonte: modelo gold 'estoque_pecas' (QTD_CONTABIL do ERP).
+
+parameters:
+  - name: revenda
+    label: Revenda
+    type: numero
+    optional: true
+
+formats:
+  disponivel: numero
+  reservado: numero
+  preco: moeda
+  valor_estoque: moeda
+
+sheets:
+  - name: Estoque
+    description: As pecas com saldo, das que mais prendem dinheiro para as demais.
+    sql: |
+      SELECT revenda, codigo, descricao, marca, disponivel, reservado, preco,
+             disponivel * coalesce(preco, 0) AS valor_estoque
+        FROM estoque_pecas
+       WHERE disponivel > 0
+         AND ($revenda IS NULL OR revenda = $revenda)
+       ORDER BY valor_estoque DESC
+    totals: [valor_estoque]

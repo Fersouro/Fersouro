@@ -1,0 +1,68 @@
+# Balcao-Pecas-Faturamento
+#
+# Apollo > Gerencial > Consulta Gerencial > Pecas, aba Grupo, departamento 300.
+# A formula (venda, custo, lucro, desconto, liquidos de devolucao) ja vive no
+# modelo gold 'margem_pecas'; aqui so se escolhe o recorte.
+name: balcao-pecas-faturamento
+title: Balcao-Pecas-Faturamento
+description: >-
+  Venda, custo, lucro e desconto do balcao de pecas (departamento 300) no
+  periodo escolhido, ja liquidos de devolucao. Fonte: modelo gold
+  'margem_pecas'. As porcentagens saem da soma do periodo, nao da media dos
+  dias -- percentual nao e somavel.
+
+parameters:
+  - name: data_inicial
+    label: Data inicial
+    type: data
+    default: inicio-do-mes
+  - name: data_final
+    label: Data final
+    type: data
+    default: fim-do-mes
+  - name: revenda
+    label: Revenda
+    type: lista
+    default: ""
+    optional: true
+    options:
+      - value: 1
+        label: Revenda 1
+      - value: 2
+        label: Revenda 2
+      - value: ""
+        label: Consolidado (1 e 2)
+
+formats:
+  cnpj: texto
+  venda_total: moeda
+  custo: moeda
+  lucro: moeda
+  valor_desconto: moeda
+  lucro_porcentagem: percentual
+  desconto_porcentagem: percentual
+
+sheets:
+  - name: Faturamento
+    description: Uma linha por filial; a linha TOTAL soma o que estiver na tela.
+    sql: |
+      SELECT codigo_empresa,
+             filial,
+             cnpj,
+             -- No original esta coluna era to_char(current_date,'MM/YYYY') -- o
+             -- mes em que a consulta rodava. Aqui e o mes do periodo escolhido,
+             -- que e o que a planilha esta mostrando de fato.
+             strftime($data_inicial, '%m/%Y')                              AS mes_ano_resultado,
+             sum(venda_total)                                              AS venda_total,
+             sum(custo)                                                    AS custo,
+             sum(lucro)                                                    AS lucro,
+             round(sum(lucro) / nullif(sum(venda_total), 0) * 100, 2)      AS lucro_porcentagem,
+             sum(valor_desconto)                                           AS valor_desconto,
+             round(sum(valor_desconto) / nullif(sum(venda_total), 0) * 100, 2) AS desconto_porcentagem
+        FROM margem_pecas
+       WHERE data BETWEEN $data_inicial AND $data_final
+         AND departamento = 300
+         AND ($revenda IS NULL OR revenda = $revenda)
+       GROUP BY codigo_empresa, filial, cnpj
+       ORDER BY codigo_empresa
+    totals: [venda_total, custo, lucro, valor_desconto]
