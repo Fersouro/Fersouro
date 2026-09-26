@@ -301,6 +301,76 @@ respeitar:
 
   Tudo isso depende dos PDFs reais.
 
+## Padrão de entrega de um fechamento (obrigatório)
+
+Toda planilha que o auxiliar entregar segue isto. Se algum item falhar, não
+entrega: avisa o que falhou.
+
+1. **Formato `.xls`** (Excel 97-2003), editado com POI em cima do modelo do
+   mês. Nunca `.xlsx`, nunca Google Planilhas no lugar do arquivo oficial.
+2. **Nome no padrão da pasta:** `Nº FECHAMENTO DE MÊS AAAA.xls`, por exemplo
+   `4º FECHAMENTO DE SETEMBRO 2026.xls`. Sem sufixos como "- PREENCHIDO" ou
+   "PRÉVIA".
+3. **Design do modelo intacto:** aba "Quinzena", logo, seções, fórmulas de
+   DIFERENÇA e TOTAL. Só as células lançadas mudam.
+4. **Conferência antes de entregar:**
+   - todas as SGs do PDF estão na planilha, sem sobra e sem O.S. repetida;
+   - valor por O.S. = soma das versões (SR 01 + 02...);
+   - SG com TG `1S*` fica em REVISÕES, as demais na seção principal;
+   - O.S. com "A" no fim mantém o "A";
+   - TOTAL GERAL do VALOR CRÉDITO = TOTAL SGS do resumo do PDF;
+   - nenhum valor com 3 ou mais casas decimais.
+5. **Colunas de NF** só com dado de fonte (BRAVOS/Linx). Sem fonte, ficam
+   vazias.
+6. **Nada de arquivo extra na pasta oficial** (prévias, cópias, testes).
+   Testes vão para uma pasta de teste.
+7. **Arquivo no Drive:** o conector do Drive só aceita o arquivo convertido em
+   texto (base64). Um `.xls`/`.xlsx` real chega corrompido por esse caminho.
+   Por isso o arquivo vai pela pasta do Drive sincronizada no servidor
+   (`claude remote-control`) ou é arrastado pelo usuário. Depois de qualquer
+   envio, confira se o tamanho no Drive é igual ao do arquivo local.
+
+## Auditoria de débitos e erros (`rpa-saga/debitos.py`)
+
+`DEBITOS.bat` lê todos os fechamentos e soma, por O.S., os créditos de todos
+os fechamentos em que ela aparece. Esse total é comparado com a NF
+(serviço + peça). Não altera nada.
+
+- **Débito:** a NF é maior que o total creditado, com diferença acima de
+  R$ 0,10, e a última observação da O.S. não diz "quitada".
+- **Erros de planilha que ele aponta:**
+  - valor com 3 ou mais casas decimais;
+  - O.S. repetida no mesmo fechamento;
+  - linha de O.S. sem crédito e sem NF.
+
+Primeira auditoria (jul–set/2026 mais o 4º de setembro novo), em 26/09/2026:
+
+- **11 O.S. com NF emitida no 1º de setembro e nenhum crédito da VW** até o
+  4º de setembro: 213940, 213725, 213842, 213788, 214021, 213849, 214004,
+  214019, 213785, 213644 e 213963.
+- **213768:** crédito parcial, faltam R$ 201,70.
+- **212825 e 213138:** NF de R$ 669,33 com crédito de R$ 639,14; faltam
+  R$ 30,19 em cada uma.
+- **213048:** faltam R$ 24,69.
+- **3º de setembro de 2026:**
+  - 12 linhas de O.S. sem crédito e sem NF, iguais às O.S. sem crédito do 1º
+    (lista copiada?);
+  - 213768 repetida (linhas 47 e 48);
+  - 213893 com crédito 101,173.
+- **1º de setembro de 2026:** a 213992 tem VAL. NF. SERV. 101,173.
+
+## Lições aprendidas (erros do auxiliar e a correção)
+
+| Erro | Correção / regra |
+|---|---|
+| `--baixar` pegava o PDF mais antigo | pega o mais recente pela data no nome do arquivo |
+| Supor 4 ou 5 fechamentos por mês | a quantidade vem do Portal Rede (`comparar_mes.py`) |
+| Prévia no Google Planilhas com ponto decimal virou texto (#VALOR!) | valores em pt-BR ("176,96"); e, pelo padrão acima, nada de prévia na pasta oficial |
+| Prévia sem o design antigo | sempre partir do `.xls` modelo do mês, nunca montar do zero |
+| Entregue `.xlsx` e nome com "- PREENCHIDO" | padrão de entrega, itens 1 e 2 |
+| Upload pelo conector do Drive chegou corrompido (17 KB em vez de 26 KB) | padrão de entrega, item 7; o arquivo corrompido foi para a lixeira na hora |
+| Falar em "planilha pronta" sem conferir débitos anteriores | rodar `debitos.py` junto com o fechamento novo e avisar o que está em aberto |
+
 ## Solução de problemas
 
 | Sintoma | Causa provável / o que fazer |

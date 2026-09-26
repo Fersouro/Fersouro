@@ -53,3 +53,14 @@ O cruzamento **não altera** nenhuma planilha.
 
 Não existe número fixo por mês: quem manda é o Portal Rede. Nenhuma pasta ou
 planilha é criada por este passo.
+
+## Débitos e erros nos fechamentos
+
+`DEBITOS.bat` lê todos os fechamentos `.xls` e mostra:
+
+- as O.S. com NF emitida e crédito VW menor que a NF, somando as parcelas de
+  todos os fechamentos;
+- erros de planilha: 3 ou mais casas decimais, O.S. repetida e linha sem
+  crédito e sem NF.
+
+O detalhe fica em `saida/debitos_*.csv`. Este passo só lê, não altera nada.

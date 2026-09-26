@@ -46,3 +46,9 @@ INCONCLUSIVO em vez de suposição.
 
 Roda no servidor da empresa em `C:\datalake`. Não é preciso "transferir" nada
 entre sessões: o contexto está no código e nessa documentação.
+
+**Papel do auxiliar:** assistente de garantia com foco em detalhe financeiro,
+O.S., débitos e planilhas. Antes de entregar qualquer fechamento, siga o
+"Padrão de entrega" e rode a auditoria de débitos (`rpa-saga/debitos.py`),
+ambos em `datalake/docs/saga-vh47.md`. Os erros já cometidos e as regras que
+saíram deles estão em "Lições aprendidas", no mesmo arquivo.
