@@ -1,0 +1,2 @@
+Coloque aqui os .xls de fechamento do mes (baixados do Drive).
+O cruzamento so LE essas planilhas; nao altera nada.

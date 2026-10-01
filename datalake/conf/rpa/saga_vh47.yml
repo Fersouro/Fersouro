@@ -1,0 +1,94 @@
+# RPA SAGA2 - VH47 (Garantia Volkswagen) -> PDFs -> planilha de controle.
+# Documentacao: docs/saga-vh47.md
+#
+# Valores de cada maquina ficam no .env (C:\datalake\.env):
+#   SAGA_DN=123456                  DN(s) da concessionaria, separados por virgula
+#   SAGA_PLANILHA=C:\...\garantia.xlsx   a planilha JA EXISTENTE que recebe os dados
+# Login: manual no navegador que abre (fica guardado no perfil). Para login
+# automatico, preencha RPA_PORTALVW_USUARIO/RPA_PORTALVW_SENHA (mesmos do RPA-PORTAL-VW).
+
+# Onde ficam PDFs, controle (SQLite), perfil do navegador e backups da planilha.
+pasta: ${DATALAKE_ROOT:-./data}/rpa/saga_vh47
+
+portal:
+  url: https://www.portalredevw.com.br/
+  navegador: msedge          # msedge | chrome | chromium
+  headless: false            # true so depois que a sessao estiver guardada
+  timeout_s: 60              # espera maxima por cada tela/elemento
+  timeout_download_s: 120
+  espera_login_min: 10       # quanto tempo espera o login manual
+  # texto que so aparece depois do login (prova de que esta logado)
+  logado_quando: ["GARANTIA VOLKSWAGEN"]
+  # cliques ate a pagina do SAGA, por TEXTO (regex, sem diferenca de maiuscula)
+  caminho:
+    - GARANTIA VOLKSWAGEN
+    - SAGA
+  # o bloco do relatorio e o link dentro dele
+  relatorio: 'SAGA\s*2\s*-?\s*VH\s*47'
+  link_lista: 'Lista\s+de\s+arquivos'
+
+lista:
+  # cabecalhos da tabela da "Lista de arquivos" (apelidos aceitos)
+  colunas:
+    ano: [Ano]
+    mes: [Mês, Mes]
+    regional: [Regional]
+    dn: [DN]
+    nome: [Nome do arquivo, Nome, Arquivo]
+  dn: ${SAGA_DN:-}
+  # SEM quantidade esperada por mes: o Portal Rede e a fonte de verdade
+  # (regra critica em docs/saga-vh47.md).
+
+# Extracao dos PDFs. Cada campo: tipo (documento | dinheiro | data | texto),
+# rotulos (regex, em ordem de prioridade; valem com/sem acento e maiuscula).
+# O valor e procurado logo depois do rotulo, na mesma linha ou (tabela) na
+# linha de baixo, na coluna do rotulo. Campo novo = mais um bloco aqui + a
+# coluna em planilha.colunas. Varios formatos de relatorio = varios layouts,
+# escolhidos por 'identificar' (regex no texto do PDF).
+extracao:
+  layouts:
+    - nome: padrao
+      chave: sg
+      campos:
+        sg:
+          tipo: documento
+          rotulos:
+            - 'n[º°o.]*\s*(?:da\s+)?sg\b'
+            - '\bsg\s*n[º°o.]*'
+            - 'solicitacao\s+de\s+garantia'
+            - '\bsg\b'
+          padrao: '\d{4,12}[a-z]?(?![a-z])'   # "123456A" = relancamento (regra de negocio)
+          obrigatorio: true
+        valor_total:
+          tipo: dinheiro
+          rotulos:
+            - 'valor\s+total\s+(?:da\s+)?sg'
+            - 'total\s+(?:da\s+)?sg'
+            - 'valor\s+total'
+            - 'total\s+geral'
+          obrigatorio: true
+        # Exemplos para o futuro (descomente quando o PDF trouxer):
+        # nf_mao_obra: {tipo: documento, rotulos: ['nf\s+(?:de\s+)?servico', 'nf\s+m\.?\s*o\.?']}
+        # nf_pecas:    {tipo: documento, rotulos: ['nf\s+(?:de\s+)?pecas']}
+        # data:        {tipo: data,      rotulos: ['data\s+(?:da\s+)?sg', 'data']}
+        # valor_mao_obra: {tipo: dinheiro, rotulos: ['(?:valor\s+)?(?:de\s+)?mao\s+de\s+obra']}
+        # valor_pecas:    {tipo: dinheiro, rotulos: ['(?:valor\s+)?(?:de\s+)?pecas']}
+
+planilha:
+  caminho: ${SAGA_PLANILHA:-}
+  aba: ""                    # vazio = procura a aba que tem os cabecalhos
+  chave: sg                  # campo que identifica a linha (coluna O.S.)
+  # campo -> cabecalhos aceitos na planilha (sem diferenca de acento/pontuacao)
+  colunas:
+    sg: [O.S., OS, Ordem de Serviço, SG]
+    nf_mao_obra: [NF de mão de obra (serviço), NF de mão de obra, NF serviço]
+    nf_pecas: [NF de peças, NF peças]
+    data: [Data]
+    valor_mao_obra: [Valor de mão de obra, Valor mão de obra]
+    valor_pecas: [Valor de peça, Valor de peças, Valor peças]
+    valor_total: [Valor total da SG, Valor total SG]
+  ao_divergir: manter        # SG ja lancada com valor diferente: manter | atualizar
+  chave_como: auto           # O.S. como numero ou texto: auto | numero | texto
+  copiar_formulas: true      # linha nova herda formulas/estilo da linha de cima
+  backups_manter: 30
+  permitir_perda_de_objetos: false

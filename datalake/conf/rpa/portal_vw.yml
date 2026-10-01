@@ -1,0 +1,51 @@
+# RPA do Portal Rede VW -- o que clicar e onde.
+#
+# Credenciais NAO ficam aqui: vao no C:\datalake\.env
+#   RPA_PORTALVW_USUARIO=...   RPA_PORTALVW_SENHA=...   RPA_PORTALVW_ALVO=...
+#
+# No servidor, este arquivo e copiado UMA VEZ para C:\datalake\rpa_portal_vw.yml
+# e depois nao e mais sobrescrito: ajuste os seletores la.
+#
+# Seletores sao do Playwright: CSS ("input[name=login]"), texto ("text=Entrar")
+# ou papel ("role=button[name='Entrar']"). Varias opcoes separadas por virgula
+# (CSS) valem: usa a primeira que estiver visivel na tela.
+# Para descobrir o seletor certo: GRAVAR-PORTAL-VW.bat (abre o navegador e
+# escreve o codigo de cada clique que voce fizer).
+
+url: https://www.portalredevw.com.br/
+
+# msedge (ja vem no Windows Server), chrome, ou chromium (exige
+# "python -m playwright install chromium")
+navegador: msedge
+
+# segundos que cada passo espera a tela responder
+timeout_s: 60
+
+login:
+  # opcional: botao/link que leva a tela de login a partir da home
+  abrir: ""
+  usuario: >-
+    input[type=email], input[autocomplete=username],
+    input[name*=user i], input[id*=user i],
+    input[name*=login i], input[id*=login i],
+    input[name*=cpf i], input[id*=cpf i]
+  senha: input[type=password]
+  entrar: >-
+    button[type=submit], input[type=submit],
+    button:has-text("Entrar"), button:has-text("Acessar"),
+    button:has-text("Login"), button:has-text("Avançar"),
+    button:has-text("Próximo")
+
+# Depois do login: como chegar no usuario especifico.
+# {alvo} e trocado pelo valor de RPA_PORTALVW_ALVO (ou --alvo na linha de comando).
+usuario_alvo:
+  # opcional: clique que abre a lista/menu de usuarios (ex.: "text=Trocar usuário")
+  abrir: ""
+  # opcional: campo de busca onde digitar o alvo antes de escolher
+  buscar: ""
+  # o clique que escolhe o usuario
+  escolher: "text={alvo}"
+
+# opcional: algo que so aparece quando ja esta dentro do usuario certo
+# (ex.: "text={alvo}" no cabecalho). Vazio = nao confere.
+confirmacao: ""

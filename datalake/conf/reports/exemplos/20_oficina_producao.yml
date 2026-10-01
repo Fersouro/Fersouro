@@ -1,0 +1,45 @@
+# Oficina - Producao por loja no periodo (OS encerradas).
+name: oficina-producao
+title: Oficina - Producao
+description: >-
+  Ordens de servico encerradas no periodo, por loja e departamento, com o tempo
+  medio que ficaram abertas. Fonte: modelo gold 'ordens_servico'. Filtre o
+  departamento 410 para ver so funilaria.
+
+parameters:
+  - name: data_inicial
+    label: Data inicial
+    type: data
+    default: inicio-do-mes
+  - name: data_final
+    label: Data final
+    type: data
+    default: fim-do-mes
+  - name: departamento
+    label: Departamento
+    type: numero
+    optional: true
+
+formats:
+  dias_em_aberto_medio: numero
+  dias_em_aberto_maximo: inteiro
+
+sheets:
+  - name: Producao
+    description: Quantidade de OS encerradas e tempo em aberto, por loja.
+    sql: |
+      SELECT loja,
+             departamento,
+             count(*)                          AS qtd_os,
+             round(avg(dias_em_aberto), 1)     AS dias_em_aberto_medio,
+             max(dias_em_aberto)               AS dias_em_aberto_maximo
+        FROM ordens_servico
+       WHERE encerramento BETWEEN $data_inicial AND $data_final
+         AND ($departamento IS NULL OR departamento = $departamento)
+       GROUP BY loja, departamento
+       ORDER BY qtd_os DESC
+    totals: [qtd_os]
+    highlights:
+      - when: dias_em_aberto_medio > 15
+        style: amarelo
+        scope: dias_em_aberto_medio
