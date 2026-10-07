@@ -1,0 +1,19 @@
+# Dados e artefatos do lake nunca vao para o git
+data/
+logs/
+*.duckdb
+*.duckdb.wal
+*.parquet
+
+# Segredos
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/

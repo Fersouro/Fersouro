@@ -1,0 +1,98 @@
+# Veiculos-Usados-Custeio
+#
+# Traducao da consulta de custeio que a equipe roda hoje. O que era intervalo
+# fixo no SQL virou campo de data na tela; a lista de linhas de formula e o
+# pivo continuam iguais aos do original.
+name: veiculos-usados-custeio
+title: Veiculos-Usados-Custeio
+description: >-
+  Custeio dos veiculos usados faturados (serie 03, transacao U21) no periodo de
+  aprovacao do financeiro, com uma coluna por linha de formula. Fonte: modelo
+  gold 'veiculos_custeio_nota'. Nota cancelada fica de fora.
+
+parameters:
+  - name: data_inicial
+    label: Data inicial
+    type: data
+    default: inicio-do-mes
+  - name: data_final
+    label: Data final
+    type: data
+    default: fim-do-mes
+  - name: revenda
+    label: Revenda
+    type: lista
+    default: ""
+    optional: true
+    options:
+      - value: 1
+        label: Revenda 1
+      - value: 2
+        label: Revenda 2
+      - value: ""
+        label: Consolidado (1 e 2)
+
+formats:
+  cnpj: texto
+  proposta: texto
+  numero_nota_fiscal: texto
+  "Valor_Compra_Usados": moeda
+  "Multa": moeda
+  "Cortesias": moeda
+  "CT": moeda
+  "Comissao": moeda
+  "Ipva": moeda
+  "Transferencia": moeda
+  "Tanque_Cheio": moeda
+  "Taxa_de_Emplacamento": moeda
+  "F_I": moeda
+  "BVW": moeda
+  "BM": moeda
+  "Duplicata_D": moeda
+  "PIV_PIVE": moeda
+  "Lancamentos_Internos": moeda
+  "Despesa_Cartorio": moeda
+  "OS_Interna": moeda
+  "Despesa_Operacional": moeda
+  val_total: moeda
+  val_icms: moeda
+  val_pis: moeda
+  val_cofins: moeda
+
+sheets:
+  - name: Custeio
+    description: Uma linha por proposta; uma coluna por linha de formula.
+    sql: |
+      SELECT codigo_empresa, cnpj, filial, proposta, veiculo, dta_emissao,
+             dta_aprovacao, tipo_veiculo, revenda, vendedor, vendedor_nome,
+             numero_nota_fiscal, status, val_total, val_icms, val_pis,
+             val_cofins,
+             max(val_presente) FILTER (WHERE linha_formula IN ('Valor Compra')) AS "Valor_Compra_Usados",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Multa')) AS "Multa",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Cortesias')) AS "Cortesias",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Ct')) AS "CT",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Comissao')) AS "Comissao",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Ipva')) AS "Ipva",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Transferencia')) AS "Transferencia",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Tanque Cheio')) AS "Tanque_Cheio",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Taxa de Emplacamento')) AS "Taxa_de_Emplacamento",
+             max(val_presente) FILTER (WHERE linha_formula IN ('F&I')) AS "F_I",
+             max(val_presente) FILTER (WHERE linha_formula IN ('BVW')) AS "BVW",
+             max(val_presente) FILTER (WHERE linha_formula IN ('BM')) AS "BM",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Duplicata_D', 'Duplicata D')) AS "Duplicata_D",
+             max(val_presente) FILTER (WHERE linha_formula IN ('PIV/PIVE')) AS "PIV_PIVE",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Lancamentos Internos', 'Lançamentos Internos')) AS "Lancamentos_Internos",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Despesa Cartorio', 'Despesa Cartório')) AS "Despesa_Cartorio",
+             max(val_presente) FILTER (WHERE linha_formula IN ('O.S Interna')) AS "OS_Interna",
+             max(val_presente) FILTER (WHERE linha_formula IN ('Despesa Operacional')) AS "Despesa_Operacional"
+        FROM veiculos_custeio_nota
+       WHERE dta_aprovacao BETWEEN $data_inicial AND $data_final
+         AND ($revenda IS NULL OR revenda = $revenda)
+         AND tipo_transacao = 'U21'
+         AND linha_formula IN ('BM', 'BVW', 'Comissao', 'Cortesias', 'Ct', 'Despesa Cartorio', 'Despesa Cartório', 'Despesa Operacional', 'Duplicata D', 'Duplicata_D', 'F&I', 'Ipva', 'Lancamentos Internos', 'Lançamentos Internos', 'Multa', 'O.S Interna', 'PIV/PIVE', 'Tanque Cheio', 'Taxa de Emplacamento', 'Transferencia', 'Valor Compra')
+       GROUP BY codigo_empresa, cnpj, filial, proposta, veiculo, dta_emissao,
+             dta_aprovacao, tipo_veiculo, revenda, vendedor, vendedor_nome,
+             numero_nota_fiscal, status, val_total, val_icms, val_pis,
+             val_cofins
+       ORDER BY dta_aprovacao, proposta
+    totals: [val_total]
