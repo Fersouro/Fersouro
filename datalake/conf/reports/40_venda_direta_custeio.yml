@@ -47,6 +47,7 @@ formats:
   "Tanque_Cheio": moeda
   "F_I": moeda
   "BVW": moeda
+  "BM": moeda
   "Duplicata_D": moeda
   "PIV_PIVE": moeda
   "Lancamentos_Internos": moeda
@@ -71,6 +72,7 @@ sheets:
              max(val_presente) FILTER (WHERE linha_formula IN ('Tanque Cheio')) AS "Tanque_Cheio",
              max(val_presente) FILTER (WHERE linha_formula IN ('F&I')) AS "F_I",
              max(val_presente) FILTER (WHERE linha_formula IN ('BVW')) AS "BVW",
+             max(val_presente) FILTER (WHERE linha_formula IN ('BM')) AS "BM",
              max(val_presente) FILTER (WHERE linha_formula IN ('Duplicata_D', 'Duplicata D')) AS "Duplicata_D",
              max(val_presente) FILTER (WHERE linha_formula IN ('PIV/PIVE')) AS "PIV_PIVE",
              max(val_presente) FILTER (WHERE linha_formula IN ('Lancamentos Internos', 'Lançamentos Internos')) AS "Lancamentos_Internos",
@@ -80,7 +82,7 @@ sheets:
        WHERE dta_aprovacao BETWEEN $data_inicial AND $data_final
          AND ($revenda IS NULL OR revenda = $revenda)
          AND tipo_venda IN ('D', 'F')
-         AND linha_formula IN ('BVW', 'Comissao', 'Cortesias', 'Ct', 'Despesa Operacional', 'Duplicata D', 'Duplicata_D', 'Emplacamento', 'F&I', 'ISS_s_comissao', 'Ipva', 'Lancamentos Internos', 'Lançamentos Internos', 'O.S Interna', 'PIV/PIVE', 'Tanque Cheio', 'Valor de Compra', 'Valor de Venda')
+         AND linha_formula IN ('BM', 'BVW', 'Comissao', 'Cortesias', 'Ct', 'Despesa Operacional', 'Duplicata D', 'Duplicata_D', 'Emplacamento', 'F&I', 'ISS_s_comissao', 'Ipva', 'Lancamentos Internos', 'Lançamentos Internos', 'O.S Interna', 'PIV/PIVE', 'Tanque Cheio', 'Valor de Compra', 'Valor de Venda')
        GROUP BY codigo_empresa, cnpj, filial, proposta, veiculo, dta_emissao,
              dta_aprovacao, tipo_veiculo, revenda, vendedor, vendedor_nome,
              tipo_venda_descricao

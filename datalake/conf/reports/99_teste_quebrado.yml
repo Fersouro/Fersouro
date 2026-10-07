@@ -1,5 +1,0 @@
-name: teste-quebrado
-title: Teste quebrado
-sheets:
-  - name: A
-    sql: SELECT * FROM $nao_existe
